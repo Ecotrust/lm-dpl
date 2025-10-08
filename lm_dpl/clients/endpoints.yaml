@@ -18,14 +18,14 @@ oregon:
       max_records: 2000
       geom: true
    - plss1: 
-      description: Public Land Survey System (Intersected)
+      description: Public Land Survey System (First Division)
       epsg: 3857
-      outfields: PLSSID,TWNSHPLAB,FRSTDIVNO
-      dtypes: VARCHAR(16),VARCHAR(20),VARCHAR(10)
-      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/7/query?
+      outfields: PLSSID,FRSTDIVNO,FRSTDIVTXT
+      dtypes: VARCHAR(16),VARCHAR(10),VARCHAR(50)
+      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/4/query?
       fetch: true
-      max_records: 5000
-      geom: false
+      max_records: 10000
+      geom: true
    - plss2: 
       description: Public Land Survey System (Township and Range)
       epsg: 3857
@@ -64,7 +64,7 @@ washington:
       description: All state parcels past year
       epsg: 2927
       outfields: FIPS_NR,LANDUSE_CD,COUNTY_NM,FILE_DATE
-      dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),DATE
+      dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),BIGINT
       url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
       fetch: true
       max_records: 2000 
