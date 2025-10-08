@@ -1,0 +1,30 @@
+services:
+  dpl-db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgis
+      env_file:
+        - ../.env
+    container_name: dpl-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - POSTGRES_PORT:5432
+    environment:
+      - POSTGRES_DB=gis
+      - POSTGRES_USER=gis
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - dpl_data:/var/lib/postgresql/data/:rw
+
+volumes:
+  # dpl_data is a named volume managed by docker. Points
+  # to ${HOME}.local/share/docker/volumes/<volume name>/_data
+  dpl_data:
+    # Use external: true if you want to manage the volume yourself
+    # Volume must be created before running docker compose up
+    # e.g. docker volume create dpl_data
+    # external: true

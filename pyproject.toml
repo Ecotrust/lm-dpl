@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lm-dpl"
+version = "0.1.0"
+description = "Data procurement and processing pipelines for LandMapper"
+authors = [
+    {name = "Ecotrust"}
+]
+maintainers = [
+    {name = "Yankuic Galvan", email = "ygalvan@ecotrust.org"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "PyYAML>=6.0",
+    "requests>=2.25.0",
+    "email-validator>=2.0.0",   
+    "tqdm",  
+    "wget",
+    "psycopg2-binary",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "pylint",
+    "mypy",
+]
+
+[project.scripts]
+lm-dpl = "lm_dpl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lm_dpl*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.pylint.master]
+extension-pkg-whitelist = ["numpy", "pandas", "geopandas"]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.messages-control]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+]

@@ -1,0 +1,47 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# Distribution and build artifacts
+build/
+dist/
+*.egg
+*.spec
+
+# Environment and configuration
+.env
+.venv/
+env/
+venv/
+
+# IDE files
+.vscode/
+.idea/
+.spyproject/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Data directories (exclude from source control)
+/data/*/
+/models/*/
+/references/*/
+/reports/*/
+
+# OS-specific files
+.DS_Store
+
+# Temporary files
+*.swp
+*.swo
+
+# Log files
+*.log
+
+# Coverage and test reports
+.coverage
+.cache
+htmlcov/
+.tox/

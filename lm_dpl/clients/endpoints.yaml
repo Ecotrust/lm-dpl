@@ -1,0 +1,76 @@
+oregon:
+   - fpd: 
+      description: ODF Forest Protection Districts
+      epsg: 3857
+      outfields: ODF_FPD
+      dtypes: VARCHAR(25) 
+      url: https://gis.odf.oregon.gov/ags1/rest/services/Applications/ProtectionPDFs/MapServer/4/query?
+      fetch: true
+      max_records: 2000
+      geom: true
+   - zoning: 
+      description: Zoning
+      epsg: 3857
+      outfields: orZCode,orZDesc
+      dtypes: VARCHAR(6),VARCHAR(101)
+      url: https://services8.arcgis.com/8PAo5HGmvRMlF2eU/ArcGIS/rest/services/Zoning/FeatureServer/0/query?
+      fetch: true
+      max_records: 2000
+      geom: true
+   - plss1: 
+      description: Public Land Survey System (Intersected)
+      epsg: 3857
+      outfields: PLSSID,TWNSHPLAB,FRSTDIVNO
+      dtypes: VARCHAR(16),VARCHAR(20),VARCHAR(10)
+      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/7/query?
+      fetch: true
+      max_records: 5000
+      geom: false
+   - plss2: 
+      description: Public Land Survey System (Township and Range)
+      epsg: 3857
+      outfields: PLSSID,TWNSHPLAB
+      dtypes: VARCHAR(16),VARCHAR(20)
+      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/2/query?
+      fetch: true
+      max_records: 2500
+      geom: true
+   - sfd: 
+      description: Structural Fire Districts
+      epsg: 2992
+      outfields: FDID_DCIN,Agency_Name
+      dtypes: VARCHAR(255),VARCHAR(255)
+      url: https://services.arcgis.com/uUvqNMGPm7axC2dD/ArcGIS/rest/services/Structural_Fire_Districts_Public/FeatureServer/68/query?
+      fetch: true
+      max_records: 2000
+      geom: true
+   - taxlots: 
+      description: Oregon Taxlots
+      url: https://utility.arcgis.com/usrsvcs/servers/78bbb0d0d9c64583ad5371729c496dcc/rest/services/Secure/DOR_ORMAP/MapServer/3/query?
+      fetch: false
+      max_records: 2000
+      geom: true
+   - coa:
+      description: ODF Conservation Opportunity Areas
+      epsg: 2992
+      outfields: COAID,COAName
+      dtypes: VARCHAR(5),VARCHAR(100)
+      url: https://nrimp.dfw.state.or.us/arcgis/rest/services/Compass/ODFW_ConservationOpportunityAreas/MapServer/0/query?
+      fetch: true
+      max_records: 2000
+      geom: true
+washington:
+   - taxlots:
+      description: All state parcels past year
+      epsg: 2927
+      outfields: FIPS_NR,LANDUSE_CD,COUNTY_NM,FILE_DATE
+      dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),DATE
+      url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
+      fetch: true
+      max_records: 2000 
+      geom: true
+   - zoning:
+      description: Zoning
+      url: https://services6.arcgis.com/tboeqGwETr5ppr5Q/ArcGIS/rest/services/WAZA_Prototype_Layers/FeatureServer/0/query?
+      epsg: 3857
+      outfields: ZoneID,ZoneName
