@@ -7,8 +7,8 @@ import argparse
 import sys
 import logging
 from typing import Optional
-
-# from lm_dpl.utils.logging_utils import setup_project_logging
+from lm_dpl.utils.db_utils import import_from_file
+from lm_dpl.utils.config import get_config
 
 
 def normalize_state(state: str, to: str = "name") -> str:
@@ -104,6 +104,28 @@ def run_soil(state: str, config_path: Optional[str] = None) -> int:
         return 1
 
 
+def run_import_file(file_path: str, table_name: str, config_path: Optional[str] = None) -> int:
+    """
+    Import data from a file into the database.
+
+    Args:
+        file_path: Path to the file to import.
+        table_name: Name of the target table.
+        config_path: Optional path to configuration file.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    try:
+        config = get_config()
+        db_creds = config.postgres_dsn_dict
+        import_from_file(db_creds, file_path, table_name)
+        return 0
+    except Exception as e:
+        logging.error(f"Error importing file {file_path}: {e}")
+        return 1
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
@@ -149,6 +171,10 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
     )
 
+    import_parser = subparsers.add_parser("import-file", help="Import data from a file")
+    import_parser.add_argument("file_path", help="Path to the file to import")
+    import_parser.add_argument("table_name", help="Name of the target table")
+
     args = parser.parse_args()
 
     # Set up basic logging (will be overridden in command functions)
@@ -162,6 +188,8 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         return run_parcels(args.state, args.config, layers)
     elif args.command == "soil":
         return run_soil(args.state, args.config)
+    elif args.command == "import-file":
+        return run_import_file(args.file_path, args.table_name, args.config)
     else:
         # This should not happen due to required=True on subparsers
         logging.error(f"Unknown command: {args.command}")

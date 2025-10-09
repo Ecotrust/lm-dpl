@@ -31,8 +31,8 @@ dependencies = [
     "requests>=2.25.0",
     "email-validator>=2.0.0",   
     "tqdm",  
-    "wget",
     "psycopg2-binary",
+    "gdal>=3.4.3",
 ]
 
 [project.optional-dependencies]
