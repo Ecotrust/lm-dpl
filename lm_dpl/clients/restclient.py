@@ -11,6 +11,7 @@ from pathlib import Path
 import requests
 import multiprocessing
 import json
+import time
 
 import yaml
 from tqdm import tqdm
@@ -368,6 +369,166 @@ class LandmapperRESTClient:
             state_name: state_service.list_services()
             for state_name, state_service in self._states.items()
         }
+
+    def test_endpoints(self, timeout: int = 30) -> Dict[str, Any]:
+        """
+        Test connectivity and response validation for all configured REST endpoints.
+
+        Args:
+            timeout: Request timeout in seconds (default: 30)
+
+        Returns:
+            Dictionary containing test results with the following structure:
+            {
+                "summary": {
+                    "total_endpoints": int,
+                    "successful": int,
+                    "failed": int,
+                    "success_rate": float
+                },
+                "results": {
+                    "state_name": {
+                        "service_name": {
+                            "status": "success" | "error",
+                            "status_code": int,
+                            "response_time": float,
+                            "error": str | None,
+                            "url": str
+                        }
+                    }
+                }
+            }
+        """
+        results = {}
+        total_endpoints = 0
+        successful = 0
+        failed = 0
+
+        print("Testing REST endpoints connectivity...")
+
+        for state_name, state_service in self._states.items():
+            state_results = {}
+            services = state_service.list_services()
+
+            for service_name, service_description in services.items():
+                total_endpoints += 1
+                service_info = state_service.get_service_info(service_name)
+                url = service_info["url"]
+
+                try:
+                    # Test basic connectivity with a minimal query
+                    test_params = {
+                        "where": "1=1",
+                        "returnCountOnly": "true",
+                        "f": "json",
+                    }
+
+                    start_time = time.time()
+                    response = requests.get(url, params=test_params, timeout=timeout)
+                    response_time = time.time() - start_time
+
+                    response.raise_for_status()
+
+                    # Validate response structure
+                    data = response.json()
+                    if "count" in data or "features" in data or "error" not in data:
+                        state_results[service_name] = {
+                            "status": "success",
+                            "status_code": response.status_code,
+                            "response_time": round(response_time, 3),
+                            "error": None,
+                            "url": url,
+                        }
+                        successful += 1
+                        print(
+                            f"✓ {state_name}.{service_name}: SUCCESS ({response_time:.3f}s)"
+                        )
+                    else:
+                        state_results[service_name] = {
+                            "status": "error",
+                            "status_code": response.status_code,
+                            "response_time": round(response_time, 3),
+                            "error": f"Invalid response structure: {data}",
+                            "url": url,
+                        }
+                        failed += 1
+                        print(
+                            f"✗ {state_name}.{service_name}: ERROR - Invalid response structure"
+                        )
+
+                except requests.exceptions.Timeout:
+                    state_results[service_name] = {
+                        "status": "error",
+                        "status_code": None,
+                        "response_time": timeout,
+                        "error": f"Request timeout after {timeout} seconds",
+                        "url": url,
+                    }
+                    failed += 1
+                    print(f"✗ {state_name}.{service_name}: ERROR - Timeout")
+
+                except requests.exceptions.ConnectionError:
+                    state_results[service_name] = {
+                        "status": "error",
+                        "status_code": None,
+                        "response_time": 0,
+                        "error": "Connection failed - endpoint unreachable",
+                        "url": url,
+                    }
+                    failed += 1
+                    print(f"✗ {state_name}.{service_name}: ERROR - Connection failed")
+
+                except requests.exceptions.HTTPError as e:
+                    state_results[service_name] = {
+                        "status": "error",
+                        "status_code": (
+                            response.status_code if "response" in locals() else None
+                        ),
+                        "response_time": (
+                            round(response_time, 3)
+                            if "response_time" in locals()
+                            else 0
+                        ),
+                        "error": f"HTTP Error: {str(e)}",
+                        "url": url,
+                    }
+                    failed += 1
+                    print(
+                        f"✗ {state_name}.{service_name}: ERROR - HTTP {response.status_code if 'response' in locals() else 'Unknown'}"
+                    )
+
+                except Exception as e:
+                    state_results[service_name] = {
+                        "status": "error",
+                        "status_code": None,
+                        "response_time": 0,
+                        "error": f"Unexpected error: {str(e)}",
+                        "url": url,
+                    }
+                    failed += 1
+                    print(f"✗ {state_name}.{service_name}: ERROR - {str(e)}")
+
+            results[state_name] = state_results
+
+        # Calculate success rate
+        success_rate = (
+            (successful / total_endpoints) * 100 if total_endpoints > 0 else 0
+        )
+
+        summary = {
+            "total_endpoints": total_endpoints,
+            "successful": successful,
+            "failed": failed,
+            "success_rate": round(success_rate, 2),
+        }
+
+        print(f"\nTest Summary:")
+        print(f"  Total endpoints: {total_endpoints}")
+        print(f"  Successful: {successful}")
+        print(f"  Failed: {failed}")
+        print(f"  Success rate: {success_rate:.1f}%")
+
+        return {"summary": summary, "results": results}
 
     def reload_config(self):
         """
