@@ -137,12 +137,15 @@ class RESTFetcher:
             print(f"Error getting total count: {e}")
             return None
 
-    def fetch_data(self, output_file=None, batch_size=2000, max_processes=None):
+    def fetch_data(
+        self, output_file=None, epsg=None, batch_size=2000, max_processes=None
+    ):
         """
         Fetch data from the ArcGIS REST endpoint using multiprocessing.
 
         Args:
             output_file (str, optional): Path to save the data
+            epsg (int, optional): EPSG code for output spatial reference
             batch_size (int): Number of records per request (default: 2000)
             max_processes (int, optional): Maximum number of processes to use
 
@@ -164,11 +167,15 @@ class RESTFetcher:
             num_batches = (total_count + batch_size - 1) // batch_size
             print(f"Number of batches: {num_batches}")
 
+            params = self.default_params.copy()
+            if epsg:
+                params["outSR"] = epsg
+
             # Prepare arguments for each batch using the standalone function
             batch_args = []
             for i in range(num_batches):
                 offset = i * batch_size
-                batch_args.append((self.url, self.default_params, offset, batch_size))
+                batch_args.append((self.url, params, offset, batch_size))
 
             if max_processes is None:
                 max_processes = min(multiprocessing.cpu_count(), 8)
@@ -263,7 +270,7 @@ class StateService:
                 # Store the fetcher and all service metadata
                 self._services[service_name] = {
                     "fetcher": fetcher,
-                    **service_info  # Include all service info from YAML
+                    **service_info,  # Include all service info from YAML
                 }
 
                 # Create attribute for direct access to fetcher

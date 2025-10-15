@@ -16,6 +16,8 @@ from ..utils import get_config, import_layer, get_project_logger
 class ParcelProcessor:
     """Class to process parcel data from REST endpoints into PostGIS database."""
 
+    epsg: int = 3857  # Default EPSG code for geometry columns
+
     def __init__(self, state: str):
         """Initialize the processor for a specific state.
 
@@ -105,7 +107,7 @@ class ParcelProcessor:
         try:
             self.logger.info(f"Fetching data for {service_name}")
             batch_size = service_info.get("max_records", 2000)
-            data = fetcher.fetch_data(batch_size=batch_size)
+            data = fetcher.fetch_data(batch_size=batch_size, epsg=self.epsg)
 
             if not data or "features" not in data or not data["features"]:
                 self.logger.warning(f"No data returned for service '{service_name}'")
