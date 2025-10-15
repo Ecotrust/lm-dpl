@@ -11,6 +11,31 @@ from lm_dpl.utils.db_utils import import_from_file
 from lm_dpl.utils.config import get_config
 
 
+def get_available_layers():
+    """
+    Get all available layer names from the REST client configuration.
+
+    Returns:
+        List of available layer names sorted alphabetically
+    """
+    from lm_dpl.clients.restclient import LandmapperRESTClient
+
+    try:
+        client = LandmapperRESTClient()
+        all_layers = set()
+
+        for state_name in client._config.keys():
+            state_info = client.get_state_info(state_name)
+            if state_info:
+                all_layers.update(state_info.keys())
+
+        return sorted(list(all_layers))
+    except Exception as e:
+        logging.warning(f"Could not load layers from endpoints configuration: {e}")
+        # Fallback to original hardcoded list
+        return ["fpd", "zoning", "plss1", "plss2", "sfd", "taxlots", "coa"]
+
+
 def normalize_state(state: str, to: str = "name") -> str:
     """
     Normalize state between full name and two-letter abbreviation.
@@ -104,7 +129,9 @@ def run_soil(state: str, config_path: Optional[str] = None) -> int:
         return 1
 
 
-def run_import_file(file_path: str, table_name: str, config_path: Optional[str] = None) -> int:
+def run_import_file(
+    file_path: str, table_name: str, config_path: Optional[str] = None
+) -> int:
     """
     Import data from a file into the database.
 
@@ -158,12 +185,15 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
     )
 
+    # Get available layers dynamically from endpoints configuration
+    available_layers = get_available_layers()
+
     parcels_parser.add_argument(
         "--layer",
         "-l",
         action="append",
-        choices=["fpd", "zonning", "plss1", "plss2", "sfd", "taxlots", "coa"],
-        help="Process specific layer(s). Can be used multiple times for multiple layers.",
+        choices=available_layers,
+        help=f"Process specific layer(s). Available: {', '.join(available_layers)}. Can be used multiple times for multiple layers.",
     )
 
     soil_parser = subparsers.add_parser("soil", help="Process soil data")
