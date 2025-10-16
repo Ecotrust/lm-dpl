@@ -26,13 +26,15 @@ def _fetch_data_batch(args):
         args: Tuple of (url, params, offset, batch_size)
 
     Returns:
-        list: List of features from this batch
+        dict: Dictionary containing batch result with status and data
     """
     import time
+    import random
 
     url, params, offset, batch_size = args
-    max_retries = 3
-    retry_delay = 2  # seconds
+    max_retries = 5  # Increased from 3 to 5
+    base_delay = 2  # seconds
+    max_delay = 60  # Maximum delay for exponential backoff
 
     for attempt in range(max_retries):
         try:
@@ -44,35 +46,73 @@ def _fetch_data_batch(args):
                 }
             )
 
-            response = requests.get(url, params=batch_params, timeout=60)
+            # Add jitter to avoid synchronized retries
+            delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
+            
+            # Add delay between retries (except first attempt)
+            if attempt > 0:
+                print(f"Waiting {delay:.2f}s before retry {attempt + 1} for batch {offset}")
+                time.sleep(delay)
+
+            response = requests.get(url, params=batch_params, timeout=120)  # Increased timeout
             response.raise_for_status()
 
             # Check if response content is empty before parsing JSON
             if not response.content.strip():
                 print(f"Empty response for batch {offset}, attempt {attempt + 1}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
                     continue
-                return []
+                return {
+                    "status": "failed",
+                    "offset": offset,
+                    "batch_size": batch_size,
+                    "attempts": attempt + 1,
+                    "error": "Empty response",
+                    "features": []
+                }
 
             data = response.json()
 
             if "error" in data:
                 print(f"Error in batch {offset}: {data['error']}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
                     continue
-                return []
+                return {
+                    "status": "failed",
+                    "offset": offset,
+                    "batch_size": batch_size,
+                    "attempts": attempt + 1,
+                    "error": f"Service error: {data['error']}",
+                    "features": []
+                }
 
             features = data.get("features", [])
-            return features
+            
+            # Add small delay between successful requests to avoid rate limiting
+            if features:
+                time.sleep(0.5 + random.uniform(0, 0.5))  # 0.5-1.0 second delay
+            
+            return {
+                "status": "success",
+                "offset": offset,
+                "batch_size": batch_size,
+                "attempts": attempt + 1,
+                "error": None,
+                "features": features
+            }
 
         except requests.exceptions.RequestException as e:
             print(f"Request error fetching batch {offset}, attempt {attempt + 1}: {e}")
             if attempt < max_retries - 1:
-                time.sleep(retry_delay)
                 continue
-            return []
+            return {
+                "status": "failed",
+                "offset": offset,
+                "batch_size": batch_size,
+                "attempts": attempt + 1,
+                "error": f"Request error: {str(e)}",
+                "features": []
+            }
         except ValueError as e:
             # JSON decoding error - likely empty or invalid response
             print(
@@ -82,19 +122,38 @@ def _fetch_data_batch(args):
                 f"Response content: {response.text[:200] if response else 'No response'}"
             )
             if attempt < max_retries - 1:
-                time.sleep(retry_delay)
                 continue
-            return []
+            return {
+                "status": "failed",
+                "offset": offset,
+                "batch_size": batch_size,
+                "attempts": attempt + 1,
+                "error": f"JSON decode error: {str(e)}",
+                "features": []
+            }
         except Exception as e:
             print(
                 f"Unexpected error fetching batch {offset}, attempt {attempt + 1}: {e}"
             )
             if attempt < max_retries - 1:
-                time.sleep(retry_delay)
                 continue
-            return []
+            return {
+                "status": "failed",
+                "offset": offset,
+                "batch_size": batch_size,
+                "attempts": attempt + 1,
+                "error": f"Unexpected error: {str(e)}",
+                "features": []
+            }
 
-    return []
+    return {
+        "status": "failed",
+        "offset": offset,
+        "batch_size": batch_size,
+        "attempts": max_retries,
+        "error": "Max retries exceeded",
+        "features": []
+    }
 
 
 class RESTFetcher:
@@ -102,21 +161,25 @@ class RESTFetcher:
     A class to fetch data from any ArcGIS REST endpoint.
     """
 
-    def __init__(self, url, params=None):
+    def __init__(self, url, params=None, where=None, max_processes=None):
         """
         Initialize the fetcher with a URL and optional parameters.
 
         Args:
             url (str): The ArcGIS REST endpoint URL
             params (dict, optional): Default parameters for requests
+            where (str, optional): WHERE clause for filtering features. If None, defaults to "1=1"
+            max_processes (int, optional): Maximum number of processes to use for this service
         """
         self.url = url
+        self.where = where or "1=1"
         self.default_params = params or {
-            "where": "1=1",
+            "where": self.where,
             "outFields": "*",
             "returnGeometry": "true",
             "f": "geojson",
         }
+        self.max_processes = max_processes
 
     def get_total_count(self):
         """
@@ -126,7 +189,7 @@ class RESTFetcher:
             int: Total number of features, or None if failed
         """
         try:
-            params = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
+            params = {"where": self.where, "returnCountOnly": "true", "f": "json"}
 
             response = requests.get(self.url, params=params, timeout=30)
             response.raise_for_status()
@@ -179,7 +242,15 @@ class RESTFetcher:
                 batch_args.append((self.url, params, offset, batch_size))
 
             if max_processes is None:
-                max_processes = min(multiprocessing.cpu_count(), 8)
+                # Use service-specific max_processes if configured, otherwise use default
+                if self.max_processes is not None:
+                    max_processes = self.max_processes
+                    print(f"Using configured max_processes: {max_processes}")
+                else:
+                    # Default fallback logic
+                    max_processes = min(multiprocessing.cpu_count(), 4)
+
+            print(f"Using {max_processes} concurrent processes")
 
             # Use multiprocessing to fetch batches in parallel with progress bar
             with multiprocessing.Pool(processes=max_processes) as pool:
@@ -193,11 +264,69 @@ class RESTFetcher:
                     )
                 )
 
+            # Process results and identify failed batches
             all_features = []
-            for features in results:
-                all_features.extend(features)
+            failed_batches = []
+            successful_batches = 0
 
-            print(f"Successfully fetched {len(all_features)} total features")
+            for batch_result in results:
+                if batch_result["status"] == "success":
+                    all_features.extend(batch_result["features"])
+                    successful_batches += 1
+                else:
+                    failed_batches.append(batch_result)
+                    print(f"Failed batch {batch_result['offset']}: {batch_result['error']}")
+
+            print(f"Successfully fetched {len(all_features)} features from {successful_batches} batches")
+
+            # Automatically retry failed batches
+            persistent_failures = []
+            if failed_batches:
+                print(f"\nRetrying {len(failed_batches)} failed batches...")
+                retry_args = [(self.url, params, batch["offset"], batch["batch_size"]) for batch in failed_batches]
+                
+                with multiprocessing.Pool(processes=min(max_processes, len(retry_args))) as pool:
+                    retry_results = list(
+                        tqdm(
+                            pool.imap(_fetch_data_batch, retry_args),
+                            total=len(retry_args),
+                            desc="Retrying failed batches",
+                            unit="batch",
+                        )
+                    )
+
+                # Process retry results
+                retry_successful = 0
+                for batch_result in retry_results:
+                    if batch_result["status"] == "success":
+                        all_features.extend(batch_result["features"])
+                        retry_successful += 1
+                    else:
+                        persistent_failures.append(batch_result)
+                        print(f"Batch {batch_result['offset']} still failed after retry: {batch_result['error']}")
+
+                print(f"Successfully recovered {retry_successful} batches from retry")
+
+            # Log persistent failures for manual recovery
+            if persistent_failures:
+                failure_log = {
+                    "timestamp": time.time(),
+                    "service_url": self.url,
+                    "total_batches": num_batches,
+                    "successful_batches": successful_batches + retry_successful,
+                    "persistent_failures": persistent_failures,
+                    "params": params
+                }
+                
+                # Save failure log to file
+                failure_log_path = Path(f"failed_batches_{int(time.time())}.json")
+                with open(failure_log_path, "w") as f:
+                    json.dump(failure_log, f, indent=2)
+                
+                print(f"Persistent failures logged to: {failure_log_path}")
+                print(f"Use retry_failed_batches() method to recover these batches later")
+
+            print(f"Final result: {len(all_features)} total features from {successful_batches + (retry_successful if failed_batches else 0)} batches")
 
             complete_data = {"type": "FeatureCollection", "features": all_features}
 
@@ -236,6 +365,93 @@ class RESTFetcher:
         temp_fetcher = RESTFetcher(self.url, custom_params)
         return temp_fetcher.fetch_data(output_file, batch_size, max_processes)
 
+    def retry_failed_batches(self, failure_log_file, max_processes=None, output_file=None):
+        """
+        Retry failed batches from a previous failure log.
+
+        Args:
+            failure_log_file (str): Path to the failure log JSON file
+            max_processes (int, optional): Maximum number of processes to use
+            output_file (str, optional): Path to save the recovered data
+
+        Returns:
+            dict: The recovered data as GeoJSON FeatureCollection, or None if failed
+        """
+        try:
+            # Load failure log
+            with open(failure_log_file, "r") as f:
+                failure_log = json.load(f)
+
+            print(f"Retrying {len(failure_log['persistent_failures'])} failed batches from {failure_log_file}")
+
+            # Prepare arguments for retrying failed batches
+            retry_args = []
+            for failed_batch in failure_log["persistent_failures"]:
+                retry_args.append((
+                    self.url,
+                    failure_log["params"],
+                    failed_batch["offset"],
+                    failed_batch["batch_size"]
+                ))
+
+            if max_processes is None:
+                max_processes = min(multiprocessing.cpu_count(), 4)
+
+            print(f"Using {max_processes} concurrent processes for recovery")
+
+            # Retry failed batches
+            with multiprocessing.Pool(processes=min(max_processes, len(retry_args))) as pool:
+                retry_results = list(
+                    tqdm(
+                        pool.imap(_fetch_data_batch, retry_args),
+                        total=len(retry_args),
+                        desc="Recovering failed batches",
+                        unit="batch",
+                    )
+                )
+
+            # Process retry results
+            recovered_features = []
+            successful_recoveries = 0
+            still_failed = []
+
+            for batch_result in retry_results:
+                if batch_result["status"] == "success":
+                    recovered_features.extend(batch_result["features"])
+                    successful_recoveries += 1
+                else:
+                    still_failed.append(batch_result)
+                    print(f"Batch {batch_result['offset']} still failed: {batch_result['error']}")
+
+            print(f"Successfully recovered {successful_recoveries} batches")
+            if still_failed:
+                print(f"{len(still_failed)} batches still failed after recovery attempt")
+
+            # Create result data
+            recovered_data = {"type": "FeatureCollection", "features": recovered_features}
+
+            # Save to file if specified
+            if output_file:
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                with open(output_path, "w") as f:
+                    json.dump(recovered_data, f, indent=2)
+
+                print(f"Recovered data saved to: {output_path}")
+
+            return recovered_data
+
+        except FileNotFoundError:
+            print(f"Failure log file not found: {failure_log_file}")
+            return None
+        except json.JSONDecodeError:
+            print(f"Invalid failure log file: {failure_log_file}")
+            return None
+        except Exception as e:
+            print(f"Error during batch recovery: {e}")
+            return None
+
 
 class StateService:
     """
@@ -257,15 +473,23 @@ class StateService:
 
         for service_config in state_config:
             for service_name, service_info in service_config.items():
+                # Extract where clause from service info, default to None if not specified
+                where_clause = service_info.get("where")
+                
+                # Extract max_processes from service info if specified
+                max_processes = service_info.get("max_processes")
+                
                 # Create a RESTFetcher instance for this service
                 fetcher = RESTFetcher(
                     url=service_info["url"],
                     params={
-                        "where": "1=1",
+                        "where": where_clause or "1=1",
                         "outFields": "*",
                         "returnGeometry": "true",
                         "f": "geojson",
                     },
+                    where=where_clause,
+                    max_processes=max_processes,
                 )
 
                 # Store the fetcher and all service metadata
