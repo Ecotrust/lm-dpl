@@ -37,7 +37,7 @@ oregon:
       geom: true
    - sfd: 
       description: Structural Fire Districts
-      epsg: 2992
+      epsg: 3857
       outfields: FDID_DCIN,Agency_Name
       dtypes: VARCHAR(255),VARCHAR(255)
       url: https://services.arcgis.com/uUvqNMGPm7axC2dD/ArcGIS/rest/services/Structural_Fire_Districts_Public/FeatureServer/68/query?
@@ -52,17 +52,48 @@ oregon:
       geom: true
    - coa:
       description: ODF Conservation Opportunity Areas
-      epsg: 2992
+      epsg: 3857
       outfields: COAID,COAName
       dtypes: VARCHAR(5),VARCHAR(100)
       url: https://nrimp.dfw.state.or.us/arcgis/rest/services/Compass/ODFW_ConservationOpportunityAreas/MapServer/0/query?
       fetch: true
       max_records: 2000
       geom: true
+   - hui:
+      description: 12-digit Hydrologic Unit (HU12) polygon boundaries for the United States, Puerto Rico, and the U.S. Virgin Islands.
+      url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
+      epsg: 3857
+      outfields: huc12,name,states
+      dtypes: VARCHAR(12),VARCHAR(255),VARCHAR(50)
+      where: "STATES LIKE '%OR%'"
+      fetch: true
+      max_records: 100
+      max_processes: 1
+      geom: true
+   - ppa:
+      description: USA Census Populated Place Areas
+      url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
+      epsg: 3857
+      outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(2),INTEGER,INTEGER,FLOAT,FLOAT
+      where: "ST = 'OR'"
+      fetch: true
+      max_records: 2000
+      geom: true
+   - cty:
+      description: Washington State Counties
+      url: https://carto.nationalmap.gov/arcgis/rest/services/govunits/mapserver/23/query?
+      epsg: 3857
+      outfields: STATE_FIPSCODE,COUNTY_FIPSCODE,COUNTY_NAME
+      dtypes: VARCHAR(2),VARCHAR(3),VARCHAR(120)
+      where: "STATE_FIPSCODE = '41'"
+      fetch: true
+      max_records: 2000
+      geom: true
 washington:
    - taxlots:
       description: All state parcels past year
-      epsg: 2927
+      epsg: 3857
       outfields: FIPS_NR,LANDUSE_CD,COUNTY_NM,FILE_DATE
       dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),BIGINT
       url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
@@ -74,3 +105,56 @@ washington:
       url: https://services6.arcgis.com/tboeqGwETr5ppr5Q/ArcGIS/rest/services/WAZA_Prototype_Layers/FeatureServer/0/query?
       epsg: 3857
       outfields: ZoneID,ZoneName
+      dtypes: VARCHAR(255),VARCHAR(255)
+      fetch: true
+      max_records: 2000
+      geom: true
+   - plss:
+      description: Public Land Survey System
+      url: https://gis.dnr.wa.gov/site3/rest/services/Public_Boundaries/WADNR_PUBLIC_Cadastre_OpenData/MapServer/2/query?
+      epsg: 3857
+      outfields: LEGAL_DESC_TYPE_CD,LEGAL_DESC_NM,EDIT_DATE
+      dtypes: INTEGER,VARCHAR(50),DATE
+      fetch: true
+      max_records: 2000
+      geom: true
+   - fpd:
+      description: Fire Protection Districts
+      url: https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildFire_Data/MapServer/6/query?
+      epsg: 3857
+      outfields: FPD_CODE,FPD_DESC
+      dtypes: VARCHAR(255),VARCHAR(255)
+      fetch: true
+      max_records: 2000
+      geom: true
+   - hui:
+      description: 12-digit Hydrologic Unit (HU12) polygon boundaries
+      url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
+      epsg: 3857
+      outfields: huc12,name,states
+      dtypes: VARCHAR(12),VARCHAR(255),VARCHAR(50)
+      where: "STATES LIKE '%WA%'"
+      fetch: true
+      max_records: 100
+      max_processes: 1
+      geom: true
+   - ppa:
+      description: USA Census Populated Place Areas
+      url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
+      epsg: 3857
+      outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(2),INTEGER,INTEGER,FLOAT,FLOAT
+      where: "ST = 'WA'"
+      fetch: true
+      max_records: 2000
+      geom: true
+   - cty:
+      description: Washington State Counties
+      url: https://carto.nationalmap.gov/arcgis/rest/services/govunits/mapserver/23/query?
+      epsg: 3857
+      outfields: STATE_FIPSCODE,COUNTY_FIPSCODE,COUNTY_NAME
+      dtypes: VARCHAR(2),VARCHAR(3),VARCHAR(120)
+      where: "STATE_FIPSCODE = '53'"
+      fetch: true
+      max_records: 2000
+      geom: true
