@@ -59,7 +59,7 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
-   - hui:
+   - huc:
       description: 12-digit Hydrologic Unit (HU12) polygon boundaries for the United States, Puerto Rico, and the U.S. Virgin Islands.
       url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
       epsg: 3857
@@ -127,7 +127,7 @@ washington:
       fetch: true
       max_records: 2000
       geom: true
-   - hui:
+   - huc:
       description: 12-digit Hydrologic Unit (HU12) polygon boundaries
       url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
       epsg: 3857
