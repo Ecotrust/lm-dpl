@@ -16,13 +16,13 @@ WHERE NOT ST_IsValid(geom);
 -- Create spatial indexes
 DROP INDEX IF EXISTS s_oregon_huc_geom_idx;
 CREATE INDEX s_oregon_huc_geom_idx
-  ON s_oregon_huc
-  USING GIST (geom);
+    ON s_oregon_huc
+    USING GIST (geom);
 
 DROP INDEX IF EXISTS s_oregon_plss1_geom_idx;
 CREATE INDEX s_oregon_plss1_geom_idx
-  ON s_oregon_plss1
-  USING GIST (geom);
+    ON s_oregon_plss1
+    USING GIST (geom);
 
 DROP INDEX IF EXISTS s_oregon_plss2_geom_idx;
 CREATE INDEX s_oregon_plss2_geom_idx
@@ -31,27 +31,27 @@ CREATE INDEX s_oregon_plss2_geom_idx
 
 DROP INDEX IF EXISTS s_oregon_taxlots_geom_idx;
 CREATE INDEX s_oregon_taxlots_geom_idx
-  ON s_oregon_taxlots
-  USING GIST (geom);
+    ON s_oregon_taxlots
+    USING GIST (geom);
 
 DROP INDEX IF EXISTS s_oregon_taxlots_idx;
 CREATE INDEX s_oregon_taxlots_idx
-  ON s_oregon_taxlots (id);
+    ON s_oregon_taxlots (id);
 
 DROP INDEX IF EXISTS s_oregon_fpd_geom_idx;
 CREATE INDEX s_oregon_fpd_geom_idx
-  ON s_oregon_fpd
-  USING GIST (geom);
+    ON s_oregon_fpd
+    USING GIST (geom);
 
 DROP INDEX IF EXISTS s_oregon_sfd_geom_idx;
 CREATE INDEX s_oregon_sfd_geom_idx
-  ON s_oregon_sfd
-  USING GIST (geom);
+    ON s_oregon_sfd
+    USING GIST (geom);
 
 DROP INDEX IF EXISTS s_oregon_zoning_geom_idx;
 CREATE INDEX s_oregon_zoning_geom_idx
-  ON s_oregon_zoning
-  USING GIST (geom);
+    ON s_oregon_zoning
+    USING GIST (geom);
 
 
 BEGIN;
@@ -77,8 +77,8 @@ WHERE
     ST_Dimension(ST_Intersection(a.geom, b.geom)) = 2;
 
 CREATE INDEX IF NOT EXISTS s_oregon_plss_geom_idx
-  ON s_oregon_plss
-  USING GIST (geom);
+    ON s_oregon_plss
+    USING GIST (geom);
 
 
 -- Taxlot table
@@ -208,12 +208,16 @@ LEFT JOIN
     (SELECT * FROM zoning_join WHERE rn = 1) zn ON t.id = zn.taxlot_id;
 ROLLBACK;
 
+-- Create indexes on app_taxlot
+DROP INDEX IF EXISTS app_taxlot_centroid_idx;
 CREATE INDEX app_taxlot_centroid_idx 
     ON public.app_taxlot 
     USING gist (centroid);
+DROP INDEX IF EXISTS app_taxlot_geometry_idx;
 CREATE INDEX app_taxlot_geometry_idx 
     ON public.app_taxlot 
     USING gist (geometry);
+DROP INDEX IF EXISTS app_taxlot_pkey;
 CREATE UNIQUE INDEX app_taxlot_pkey 
     ON public.app_taxlot 
     USING btree (id);
