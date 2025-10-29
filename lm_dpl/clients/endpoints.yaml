@@ -53,8 +53,8 @@ oregon:
    - coa:
       description: ODF Conservation Opportunity Areas
       epsg: 3857
-      outfields: COAID,COAName
-      dtypes: VARCHAR(5),VARCHAR(100)
+      outfields: COAID,COAName,CentroidEc,ProfileLin
+      dtypes: VARCHAR(5),VARCHAR(100),VARCHAR(5),VARCHAR(254)
       url: https://nrimp.dfw.state.or.us/arcgis/rest/services/Compass/ODFW_ConservationOpportunityAreas/MapServer/0/query?
       fetch: true
       max_records: 2000
@@ -75,7 +75,7 @@ oregon:
       url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
       epsg: 3857
       outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
-      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(2),INTEGER,INTEGER,FLOAT,FLOAT
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(10),INTEGER,INTEGER,FLOAT,FLOAT
       where: "ST = 'OR'"
       fetch: true
       max_records: 2000
@@ -143,7 +143,7 @@ washington:
       url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
       epsg: 3857
       outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
-      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(2),INTEGER,INTEGER,FLOAT,FLOAT
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(10),INTEGER,INTEGER,FLOAT,FLOAT
       where: "ST = 'WA'"
       fetch: true
       max_records: 2000
