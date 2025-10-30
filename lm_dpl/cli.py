@@ -95,7 +95,7 @@ def run_parcels(
                     continue
         else:
             # Process all layers
-            processor.run()
+            processor.fetch()
 
         return 0
 

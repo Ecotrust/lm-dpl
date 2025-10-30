@@ -6,6 +6,7 @@ Reads endpoint configurations from YAML files, fetches data using the REST clien
 and inserts data into PostGIS database.
 """
 
+import os
 import json
 from typing import Dict, Any
 
@@ -159,7 +160,7 @@ class ParcelProcessor:
             self.logger.error(f"Failed to process service '{service_name}': {e}")
             raise
 
-    def run(self) -> None:
+    def fetch(self) -> None:
         """Run the complete processing pipeline for all services in the state."""
         self.logger.info(f"Starting parcel processor for state: {self.state}")
 
@@ -174,6 +175,13 @@ class ParcelProcessor:
                 continue
 
         self.logger.info(f"Completed parcel processing for state: {self.state}")
+
+    def process_app_taxlots(self) -> None:
+        """Process final 'app_taxlot' table."""
+
+        with DatabaseManager(self.db_credentials) as db:
+            self.logger.info(f"Processing {self.state} parcels ...")
+            db.run_from_file(os.path.dirname(__file__), "oregon_parcels.sql")
 
 
 def main(state: str, config_path: str = None) -> None:
@@ -191,7 +199,7 @@ def main(state: str, config_path: str = None) -> None:
 
     try:
         processor = ParcelProcessor(state)
-        processor.run()
+        processor.fetch()
         logger.info(f"Completed parcel processing for state: {state}")
     except Exception as e:
         logger.error(f"Error during parcel processing for state {state}: {e}")
