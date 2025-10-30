@@ -16,3 +16,67 @@ CREATE TABLE app_soiltype (
     avg_rs_h DOUBLE PRECISION DEFAULT NULL,
     geometry geometry(MULTIPOLYGON, 3857) DEFAULT NULL
 );
+
+WITH soils_join (
+    mukey, 
+    areasym, 
+    spatial, 
+    musym, 
+    shp_lng, 
+    shap_ar, 
+    si_label, 
+    muname, 
+    drclssd, 
+    frphrtd, 
+    avg_rs_l, 
+    avg_rs_h, 
+    geometry
+) AS (
+    SELECT 
+        s.mukey, 
+        g.areasym, 
+        g.spatialversion, 
+        g.musym, 
+        ST_Perimeter(g.geom), 
+        ST_Area(g.geom),
+        s.si_label, 
+        s.muname, 
+        s.drclassdcd, 
+        s.forpehrtdcp, 
+        s.avg_rs_l,
+        s.avg_rs_h,
+        g.geom
+    FROM s_ssurgo_data AS s
+    LEFT JOIN s_ssurgo_geom AS g
+    ON s.mukey = g.mukey
+)
+INSERT INTO app_soiltype (
+    mukey, 
+    areasym, 
+    spatial, 
+    musym, 
+    shp_lng, 
+    shap_ar, 
+    si_label, 
+    muname, 
+    drclssd, 
+    frphrtd, 
+    avg_rs_l, 
+    avg_rs_h, 
+    geometry
+)
+SELECT
+    mukey, 
+    areasym, 
+    spatial, 
+    musym, 
+    shp_lng, 
+    shap_ar, 
+    si_label, 
+    muname, 
+    drclssd, 
+    frphrtd, 
+    avg_rs_l, 
+    avg_rs_h, 
+    geometry
+FROM soils_join;
