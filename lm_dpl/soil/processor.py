@@ -2,12 +2,14 @@
 SSURGO Data Processor - A class for fetching and processing SSURGO soil data.
 """
 
+import os
 from typing import List, Optional, Dict, Any
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
 from ..clients import SDADataQ
+from ..clients.db_manager import DatabaseManager
 from ..utils import import_geospatial_layer, import_layer, get_project_logger
 
 
@@ -80,12 +82,19 @@ class SSURGOProcessor:
     """
 
     sp_q = """
-        SELECT 
+        SELECT DISTINCT
             mapunit.mukey, 
+            mp.areasymbol,
+            mp.musym,
+            mp.spatialversion,
             G.MupolygonWktWm as geom
         FROM mapunit
+        JOIN (
+            SELECT DISTINCT mukey, spatialversion, musym, areasymbol
+            FROM mupolygon
+        ) as mp ON mapunit.mukey = mp.mukey
         CROSS APPLY SDA_Get_MupolygonWktWm_from_Mukey(mapunit.mukey) as G
-        WHERE mukey in ({mukeys_str})
+        WHERE mp.mukey in ({mukeys_str})
     """
 
     tb_q = """
@@ -287,8 +296,8 @@ class SSURGOProcessor:
                         data=batch_result,
                         table_name="s_ssurgo_geom",
                         srid=3857,
-                        columns=["mukey", "geom"],
-                        property_keys=["mukey"],
+                        columns=["mukey", "areasym", "musym", "spatialversion", "geom"],
+                        property_keys=["mukey", "areasym", "musym", "spatialversion"],
                         num_threads=1,
                     )
 
@@ -321,7 +330,19 @@ def main(state: str, config_path: Optional[str] = None) -> None:
     # Initialize SSURGO processor with state
     ssurgo_processor = SSURGOProcessor(state=state)
 
+    state_name = {
+        "OR": "oregon",
+        "WA": "washington",
+    }
+
     try:
+        with DatabaseManager(dsn) as db_manager:
+            # Create staging schema
+            sql_script_path = os.path.join(
+                os.path.dirname(__file__), f"{state_name.get(state)}_soils_schema.sql"
+            )
+            db_manager.execute_from_file(sql_script_path)
+            logger.info("Database staging schema created successfully")
         # Fetch and import ssurgo soil table
         ssurgo_processor.fetch_tb(db_credentials=dsn, batch_size=3000, max_workers=1)
         logger.info(f"SSURGO data processing completed successfully")
