@@ -26,10 +26,9 @@ SELECT
     class,
     st,
     population,
-    placefips,
+    CAST(placefips AS INTEGER) AS place_fips,
     pop_sqmi,
     sqmi,
-    population_class,
+    pop_class,
     ST_Centroid(geom) AS geometry
-FROM s_oregon_populationpoint;
-
+FROM s_oregon_ppa;
