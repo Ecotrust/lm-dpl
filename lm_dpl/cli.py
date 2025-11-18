@@ -137,6 +137,84 @@ def run_parcels(
         return 1
 
 
+def run_app_taxlot(state: str, config_path: Optional[str] = None) -> int:
+    """
+    Run app_taxlot table processing for the specified state.
+
+    Args:
+        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        config_path: Optional path to configuration file
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    try:
+        # Import here to avoid circular imports
+        from lm_dpl.parcels.processor import ParcelProcessor
+
+        normalized_state = normalize_state(state)
+        processor = ParcelProcessor(normalized_state)
+        processor.process_app_taxlot()
+
+        return 0
+
+    except Exception as e:
+        logging.error(f"Error processing app_taxlot for state {state}: {e}")
+        return 1
+
+
+def run_app_coa(state: str, config_path: Optional[str] = None) -> int:
+    """
+    Run app_coa table processing for the specified state.
+
+    Args:
+        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        config_path: Optional path to configuration file
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    try:
+        # Import here to avoid circular imports
+        from lm_dpl.parcels.processor import ParcelProcessor
+
+        normalized_state = normalize_state(state)
+        processor = ParcelProcessor(normalized_state)
+        processor.process_app_coa()
+
+        return 0
+
+    except Exception as e:
+        logging.error(f"Error processing app_coa for state {state}: {e}")
+        return 1
+
+
+def run_app_populationpoint(state: str, config_path: Optional[str] = None) -> int:
+    """
+    Run app_populationpoint table processing for the specified state.
+
+    Args:
+        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        config_path: Optional path to configuration file
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    try:
+        # Import here to avoid circular imports
+        from lm_dpl.parcels.processor import ParcelProcessor
+
+        normalized_state = normalize_state(state)
+        processor = ParcelProcessor(normalized_state)
+        processor.process_app_populationpoint()
+
+        return 0
+
+    except Exception as e:
+        logging.error(f"Error processing app_populationpoint for state {state}: {e}")
+        return 1
+
+
 def run_soil(state: str, config_path: Optional[str] = None) -> int:
     """
     Run soil processing for the specified state.
