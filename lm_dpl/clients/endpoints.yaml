@@ -94,8 +94,8 @@ washington:
    - taxlots:
       description: All state parcels past year
       epsg: 3857
-      outfields: FIPS_NR,LANDUSE_CD,COUNTY_NM,FILE_DATE
-      dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),BIGINT
+      outfields: OBJECTID,FIPS_NR,ORIG_PARCEL_ID,LANDUSE_CD,COUNTY_NM,FILE_DATE
+      dtypes: BIGINT,INTEGER,VARCHAR(20),SMALLINT,VARCHAR(12),BIGINT
       url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
       fetch: true
       max_records: 2000 
@@ -106,15 +106,24 @@ washington:
       epsg: 3857
       outfields: ZoneID,ZoneName
       dtypes: VARCHAR(255),VARCHAR(255)
+      fetch: false
+      max_records: 2000
+      geom: true
+   - landuse:
+      description: Washington Land Use Designations
+      url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/LandUse2010gdb/FeatureServer/0/query
+      epsg: 3857
+      outfields: LANDUSE_CD,DESCR
+      dtypes: INTEGER,VARCHAR(72)
       fetch: true
       max_records: 2000
       geom: true
    - plss:
-      description: Public Land Survey System
+      description: Public Land Survey System (PLS Township Subdivision)
       url: https://gis.dnr.wa.gov/site3/rest/services/Public_Boundaries/WADNR_PUBLIC_Cadastre_OpenData/MapServer/2/query?
       epsg: 3857
       outfields: LEGAL_DESC_TYPE_CD,LEGAL_DESC_NM,EDIT_DATE
-      dtypes: INTEGER,VARCHAR(50),DATE
+      dtypes: INTEGER,VARCHAR(50),BIGINT
       fetch: true
       max_records: 2000
       geom: true
@@ -123,9 +132,9 @@ washington:
       url: https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildFire_Data/MapServer/6/query?
       epsg: 3857
       outfields: FPD_CODE,FPD_DESC
-      dtypes: VARCHAR(255),VARCHAR(255)
+      dtypes: VARCHAR(254),VARCHAR(254)
       fetch: true
-      max_records: 2000
+      max_records: 10
       geom: true
    - huc:
       description: 12-digit Hydrologic Unit (HU12) polygon boundaries
@@ -135,7 +144,7 @@ washington:
       dtypes: VARCHAR(12),VARCHAR(255),VARCHAR(50)
       where: "STATES LIKE '%WA%'"
       fetch: true
-      max_records: 100
+      max_records: 100 
       max_processes: 1
       geom: true
    - ppa:
