@@ -63,14 +63,16 @@ def normalize_state(state: str, to: str = "name") -> str:
 
 
 def run_parcels(
-    state: str, config_path: Optional[str] = None, layers: Optional[list] = None
+    state: Optional[str] = None,
+    config_path: Optional[str] = None,
+    layers: Optional[list] = None,
 ) -> int:
     """
     Run parcel processing for the specified state.
 
     Args:
-        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        config_path: Optional path to configuration file
+        state: Optional state name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        config_path: Optional path to custom endpoints configuration file
         layers: Optional list of specific layers to process (e.g., ['plss1', 'plss2'])
 
     Returns:
@@ -79,9 +81,40 @@ def run_parcels(
     try:
         # Import here to avoid circular imports
         from lm_dpl.parcels.processor import ParcelProcessor
+        import yaml
 
-        normalized_state = normalize_state(state)
-        processor = ParcelProcessor(normalized_state)
+        # Determine state: use CLI state if provided, otherwise extract from config
+        if config_path:
+            # Load config to extract state
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+
+            # Extract state from top-level keys
+            config_states = list(config.keys())
+            if not config_states:
+                raise ValueError(f"No state found in config file: {config_path}")
+
+            config_state = config_states[0]  # Use first state found
+
+            # Use CLI state if provided, otherwise use config state
+            if state:
+                normalized_state = normalize_state(state)
+                logging.info(
+                    f"Using state from command line: {normalized_state} (overriding config state: {config_state})"
+                )
+            else:
+                normalized_state = normalize_state(config_state)
+                logging.info(f"Using state from config file: {normalized_state}")
+        else:
+            # No config file, state is required
+            if not state:
+                raise ValueError(
+                    "State argument is required when no config file is provided"
+                )
+            normalized_state = normalize_state(state)
+            logging.info(f"Using state from command line: {normalized_state}")
+
+        processor = ParcelProcessor(normalized_state, config_path=config_path)
 
         # Process only specified layers
         if layers:
@@ -90,7 +123,7 @@ def run_parcels(
                     processor.process_service(layer)
                 except Exception as e:
                     logging.error(
-                        f"Error processing layer '{layer}' for state {state}: {e}"
+                        f"Error processing layer '{layer}' for state {normalized_state}: {e}"
                     )
                     continue
         else:
@@ -100,7 +133,7 @@ def run_parcels(
         return 0
 
     except Exception as e:
-        logging.error(f"Error processing parcels for state {state}: {e}")
+        logging.error(f"Error processing parcels: {e}")
         return 1
 
 
@@ -160,7 +193,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-lm-dpl --config config.yml parcels oregon    # Process parcels for Oregon with custom config
+lm-dpl parcels --config config.yml           # Process parcels with state from config file
+lm-dpl parcels --config config.yml oregon    # Process parcels for Oregon with custom config (override)
+lm-dpl parcels oregon                        # Process parcels for Oregon with default config
 lm-dpl --verbose soil OR                     # Process soil data for Oregon with verbose logging
 lm-dpl parcels washington                    # Process parcels for Washington
 lm-dpl soil WA                               # Process soil data for Washington
@@ -171,7 +206,6 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
     )
 
     # Global arguments
-    parser.add_argument("--config", help="Path to configuration file")
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
@@ -182,7 +216,12 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
 
     parcels_parser = subparsers.add_parser("parcels", help="Process parcel data")
     parcels_parser.add_argument(
-        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+        "state",
+        nargs="?",
+        help="State name or abbreviation (e.g., oregon, OR, washington, WA). Optional when using --config",
+    )
+    parcels_parser.add_argument(
+        "--config", help="Path to custom endpoints configuration file"
     )
 
     # Get available layers dynamically from endpoints configuration
@@ -205,6 +244,26 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
     import_parser.add_argument("file_path", help="Path to the file to import")
     import_parser.add_argument("table_name", help="Name of the target table")
 
+    # Add new subparsers for app table processing
+    app_taxlot_parser = subparsers.add_parser(
+        "app-taxlot", help="Process app_taxlot table"
+    )
+    app_taxlot_parser.add_argument(
+        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    )
+
+    app_coa_parser = subparsers.add_parser("app-coa", help="Process app_coa table")
+    app_coa_parser.add_argument(
+        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    )
+
+    app_populationpoint_parser = subparsers.add_parser(
+        "app-populationpoint", help="Process app_populationpoint table"
+    )
+    app_populationpoint_parser.add_argument(
+        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    )
+
     args = parser.parse_args()
 
     # Set up basic logging (will be overridden in command functions)
@@ -217,9 +276,15 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         layers = args.layer if args.layer else None
         return run_parcels(args.state, args.config, layers)
     elif args.command == "soil":
-        return run_soil(args.state, args.config)
+        return run_soil(args.state, None)
     elif args.command == "import-file":
-        return run_import_file(args.file_path, args.table_name, args.config)
+        return run_import_file(args.file_path, args.table_name, None)
+    elif args.command == "app-taxlot":
+        return run_app_taxlot(args.state, None)
+    elif args.command == "app-coa":
+        return run_app_coa(args.state, None)
+    elif args.command == "app-populationpoint":
+        return run_app_populationpoint(args.state, None)
     else:
         # This should not happen due to required=True on subparsers
         logging.error(f"Unknown command: {args.command}")

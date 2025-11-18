@@ -19,15 +19,16 @@ class ParcelProcessor:
 
     epsg: int = 3857  # Default EPSG code for geometry columns
 
-    def __init__(self, state: str):
+    def __init__(self, state: str, config_path: str = None):
         """Initialize the processor for a specific state.
 
         Args:
             state: State name ('oregon' or 'washington')
+            config_path: Optional path to custom endpoints configuration file
         """
         self.logger = get_project_logger(__name__)
         self.state = state.lower()
-        self.rest_client = LandmapperRESTClient()
+        self.rest_client = LandmapperRESTClient(config_path=config_path)
         self.config = get_config()
 
         # Get database credentials from config
@@ -176,15 +177,52 @@ class ParcelProcessor:
 
         self.logger.info(f"Completed parcel processing for state: {self.state}")
 
-    def process_app_taxlots(self) -> None:
-        """Process final 'app_taxlot' table."""
+    def process_app_taxlot(self) -> None:
+        """Process final 'app_taxlot'."""
+        sql_file = f"{self.state}_app_taxlot.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
 
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_taxlot table for: {self.state}")
         with DatabaseManager(self.db_credentials) as db:
-            self.logger.info(f"Processing {self.state} parcels ...")
-            db.run_from_file(os.path.dirname(__file__), "oregon_parcels.sql")
+            db.execute_from_file(sql_path)
+        self.logger.info(f"Successfully processed app_taxlot table for: {self.state}")
+
+    def process_app_coa(self) -> None:
+        """Process final 'app_coa'."""
+        sql_file = f"{self.state}_app_coa.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
+
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_coa table for: {self.state}")
+        with DatabaseManager(self.db_credentials) as db:
+            db.execute_from_file(sql_path)
+        self.logger.info(f"Successfully processed app_coa table for: {self.state}")
+
+    def process_app_populationpoint(self) -> None:
+        """Process final 'app_populationpoint'."""
+        sql_file = f"{self.state}_app_populationpoint.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
+
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_populationpoint table for: {self.state}")
+        with DatabaseManager(self.db_credentials) as db:
+            db.execute_from_file(sql_path)
+        self.logger.info(
+            f"Successfully processed app_populationpoint table for: {self.state}"
+        )
 
 
-def main(state: str, config_path: str = None) -> None:
+def main(state: str, config_path: str = None, test_endpoints: bool = False) -> None:
     """
     Main entry point for parcel processing from CLI.
 
@@ -198,17 +236,14 @@ def main(state: str, config_path: str = None) -> None:
     logger.info(f"Starting parcel processing for state: {state}")
 
     try:
-        processor = ParcelProcessor(state)
+        processor = ParcelProcessor(state, config_path=config_path)
+        if test_endpoints:
+            processor.test_endpoints(state=state)
         processor.fetch()
+        processor.process_app_taxlot()
+        processor.process_app_coa()
+        processor.process_app_populationpoint()
         logger.info(f"Completed parcel processing for state: {state}")
     except Exception as e:
         logger.error(f"Error during parcel processing for state {state}: {e}")
         raise
-
-
-if __name__ == "__main__":
-    # Example usage
-    import json
-
-    processor = ParcelProcessor("oregon")
-    processor.process_service("zonning")
