@@ -1,5 +1,8 @@
 """
 SSURGO Data Processor - A class for fetching and processing SSURGO soil data.
+
+Queries can be tested here:
+https://sdmdataaccess.nrcs.usda.gov/Query.aspx
 """
 
 import os
