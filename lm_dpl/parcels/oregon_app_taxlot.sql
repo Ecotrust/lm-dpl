@@ -189,7 +189,7 @@ SELECT
     NULL,
     NULL,
     plss.legal_desc,
-    t.county,
+    cty.county_name,
     'ORMAP',
     t.objectid,
     t.maptaxlot,
