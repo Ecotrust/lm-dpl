@@ -66,6 +66,7 @@ def run_parcels(
     state: Optional[str] = None,
     config_path: Optional[str] = None,
     layers: Optional[list] = None,
+    overwrite: bool = False,
 ) -> int:
     """
     Run parcel processing for the specified state.
@@ -74,6 +75,7 @@ def run_parcels(
         state: Optional state name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
         config_path: Optional path to custom endpoints configuration file
         layers: Optional list of specific layers to process (e.g., ['plss1', 'plss2'])
+        overwrite: If True, drop and recreate tables before processing
 
     Returns:
         Exit code (0 for success, non-zero for failure)
@@ -120,7 +122,7 @@ def run_parcels(
         if layers:
             for layer in layers:
                 try:
-                    processor.process_service(layer)
+                    processor.process_service(layer, overwrite=overwrite)
                 except Exception as e:
                     logging.error(
                         f"Error processing layer '{layer}' for state {normalized_state}: {e}"
@@ -128,7 +130,7 @@ def run_parcels(
                     continue
         else:
             # Process all layers
-            processor.fetch()
+            processor.fetch(overwrite=overwrite)
 
         return 0
 
@@ -312,6 +314,12 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         choices=available_layers,
         help=f"Process specific layer(s). Available: {', '.join(available_layers)}. Can be used multiple times for multiple layers.",
     )
+    parcels_parser.add_argument(
+        "--overwrite",
+        "-o",
+        action="store_true",
+        help="Drop and recreate tables before processing (WARNING: This will delete existing data)",
+    )
 
     soil_parser = subparsers.add_parser("soil", help="Process soil data")
     soil_parser.add_argument(
@@ -352,7 +360,7 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
 
     if args.command == "parcels":
         layers = args.layer if args.layer else None
-        return run_parcels(args.state, args.config, layers)
+        return run_parcels(args.state, args.config, layers, overwrite=args.overwrite)
     elif args.command == "soil":
         return run_soil(args.state, None)
     elif args.command == "import-file":

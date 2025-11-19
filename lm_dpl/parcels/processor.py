@@ -39,7 +39,9 @@ class ParcelProcessor:
         if self.state_services is None:
             raise ValueError(f"State '{state}' not found in REST client configuration")
 
-    def _create_table(self, service_name: str, service_info: Dict[str, Any]) -> None:
+    def _create_table(
+        self, service_name: str, service_info: Dict[str, Any], overwrite: bool = False
+    ) -> None:
         """Create a PostGIS table for a service if it doesn't exist.
 
         Args:
@@ -65,9 +67,8 @@ class ParcelProcessor:
             epsg = service_info.get("epsg", 4326)
             columns_def.append(f"geom GEOMETRY(GEOMETRY, {epsg})")
 
-        # Create table SQL
+        drop_table_sql = f"DROP TABLE IF EXISTS {table_name};"
         create_table_sql = f"""
-            DROP TABLE IF EXISTS {table_name};
             CREATE TABLE {table_name} (
                 id SERIAL PRIMARY KEY,
                 {', '.join(columns_def)}
@@ -75,9 +76,11 @@ class ParcelProcessor:
         """
 
         with DatabaseManager(self.db_credentials) as db:
+            if overwrite:
+                db.execute(drop_table_sql)
             db.execute(create_table_sql)
 
-    def process_service(self, service_name: str) -> None:
+    def process_service(self, service_name: str, overwrite: bool = False) -> None:
         """Process a single service: fetch data and insert into database.
 
         Args:
@@ -97,14 +100,14 @@ class ParcelProcessor:
             self.logger.info(f"Skipping service '{service_name}' (fetch: false)")
             return
 
-        # Create table
-        self._create_table(service_name, service_info)
-
         # Get fetcher for this service
         fetcher = getattr(self.state_services, service_name, None)
         if not fetcher:
             self.logger.warning(f"Fetcher not available for service '{service_name}'")
             return
+
+        # Create table
+        self._create_table(service_name, service_info, overwrite=overwrite)
 
         try:
             self.logger.info(f"Fetching data for {service_name}")
@@ -161,8 +164,12 @@ class ParcelProcessor:
             self.logger.error(f"Failed to process service '{service_name}': {e}")
             raise
 
-    def fetch(self) -> None:
-        """Run the complete processing pipeline for all services in the state."""
+    def fetch(self, overwrite: bool = False) -> None:
+        """Run the complete processing pipeline for all services in the state.
+
+        Args:
+            overwrite: If True, drop and recreate tables before processing
+        """
         self.logger.info(f"Starting parcel processor for state: {self.state}")
 
         # Get all services for the state
@@ -170,7 +177,7 @@ class ParcelProcessor:
 
         for service_name in services.keys():
             try:
-                self.process_service(service_name)
+                self.process_service(service_name, overwrite=overwrite)
             except Exception as e:
                 self.logger.error(f"Failed to process service '{service_name}': {e}")
                 continue
@@ -222,13 +229,15 @@ class ParcelProcessor:
         )
 
 
-def main(state: str, config_path: str = None, test_endpoints: bool = False) -> None:
+def main(state: str, config_path: str = None, test_endpoints: bool = False, overwrite: bool = False) -> None:
     """
     Main entry point for parcel processing from CLI.
 
     Args:
         state: State name (e.g., 'oregon', 'washington')
         config_path: Optional path to configuration file (currently unused)
+        test_endpoints: Whether to test endpoints before processing
+        overwrite: If True, drop and recreate tables before processing
     """
     from ..utils.logging_utils import setup_project_logging
 
@@ -239,7 +248,7 @@ def main(state: str, config_path: str = None, test_endpoints: bool = False) -> N
         processor = ParcelProcessor(state, config_path=config_path)
         if test_endpoints:
             processor.test_endpoints(state=state)
-        processor.fetch()
+        processor.fetch(overwrite=overwrite)
         processor.process_app_taxlot()
         processor.process_app_coa()
         processor.process_app_populationpoint()
