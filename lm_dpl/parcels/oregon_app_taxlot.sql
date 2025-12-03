@@ -206,7 +206,7 @@ LEFT JOIN
     (SELECT * FROM sfd_join WHERE rn = 1) sfd ON t.id = sfd.taxlot_id
 LEFT JOIN
     (SELECT * FROM zoning_join WHERE rn = 1) zn ON t.id = zn.taxlot_id;
-ROLLBACK;
+COMMIT;
 
 -- Create indexes on app_taxlot
 DROP INDEX IF EXISTS app_taxlot_centroid_idx;
