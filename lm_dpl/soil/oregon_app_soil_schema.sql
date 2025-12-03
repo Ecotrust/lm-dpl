@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS s_ssurgo_data;
-CREATE TABLE s_ssurgo_data
+DROP TABLE IF EXISTS s_oregon_soil_data;
+CREATE TABLE s_oregon_soil_data
 (
     id SERIAL PRIMARY KEY,
     mukey text COLLATE pg_catalog."default",
@@ -11,8 +11,8 @@ CREATE TABLE s_ssurgo_data
     avg_rs_h double precision
 );
 
-DROP TABLE IF EXISTS s_ssurgo_geom;
-CREATE TABLE s_ssurgo_geom
+DROP TABLE IF EXISTS s_oregon_soil_geom;
+CREATE TABLE s_oregon_soil_geom
 (
     id SERIAL PRIMARY KEY,
     mukey VARCHAR(100) DEFAULT NULL,

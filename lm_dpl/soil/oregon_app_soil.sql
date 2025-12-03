@@ -1,6 +1,6 @@
 -- SoilType table
-DROP TABLE IF EXISTS app_soiltype;
-CREATE TABLE app_soiltype (
+DROP TABLE IF EXISTS oregon_app_soiltype;
+CREATE TABLE oregon_app_soiltype (
     id SERIAL PRIMARY KEY,
     mukey VARCHAR(100) DEFAULT NULL,
     areasym VARCHAR(100) DEFAULT NULL,
@@ -50,7 +50,7 @@ WITH soils_join (
     LEFT JOIN s_ssurgo_geom AS g
     ON s.mukey = g.mukey
 )
-INSERT INTO app_soiltype (
+INSERT INTO oregon_app_soiltype (
     mukey, 
     areasym, 
     spatial, 
