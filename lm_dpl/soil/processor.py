@@ -342,7 +342,8 @@ def main(state: str, config_path: Optional[str] = None) -> None:
         with DatabaseManager(dsn) as db_manager:
             # Create staging schema
             sql_script_path = os.path.join(
-                os.path.dirname(__file__), f"{state_name.get(state)}_soils_schema.sql"
+                os.path.dirname(__file__),
+                f"{state_name.get(state)}_app_soil_schema.sql",
             )
             db_manager.execute_from_file(sql_script_path)
             logger.info("Database staging schema created successfully")
