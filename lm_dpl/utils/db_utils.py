@@ -11,6 +11,7 @@ import sys
 import psycopg2
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Literal
+
 from .logging_utils import get_project_logger
 
 try:
@@ -32,6 +33,7 @@ def worker_insert(
     property_keys,
     has_geometry=True,
     geom_type: Literal["wkt", "geojson"] = "wkt",
+    t_srid: Optional[int] = None,
 ):
     """
     Worker function to insert a chunk of data into a PostgreSQL/PostGIS table.
@@ -46,6 +48,7 @@ def worker_insert(
         property_keys: List of keys to access values from the data
         has_geometry: Boolean indicating whether the data contains geometry (default: True)
         geom_type: Type of geometry format - 'wkt' or 'geojson' (default: 'wkt')
+        t_srid: Optional target Spatial Reference System Identifier for reprojection
     """
     conn = None
     try:
@@ -55,9 +58,17 @@ def worker_insert(
         if has_geometry:
             # For spatial data: assume geometry is the last column
             if geom_type == "wkt":
-                geom_function = f"ST_SetSRID(ST_GeomFromText(%s), {srid})"
+                if t_srid is not None and srid is not None:
+                    # Reproject geometry using ST_Transform
+                    geom_function = f"ST_Transform(ST_SetSRID(ST_GeomFromText(%s), {srid}), {t_srid})"
+                else:
+                    geom_function = f"ST_SetSRID(ST_GeomFromText(%s), {srid})"
             elif geom_type == "geojson":
-                geom_function = f"ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid})"
+                if t_srid is not None and srid is not None:
+                    # Reproject geometry using ST_Transform
+                    geom_function = f"ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid}), {t_srid})"
+                else:
+                    geom_function = f"ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid})"
             else:
                 raise ValueError(f"Unsupported geometry type: {geom_type}")
 
@@ -125,6 +136,7 @@ def import_layer(
     has_geometry: bool = True,
     num_threads: int = 4,
     geom_type: Literal["wkt", "geojson"] = "wkt",
+    t_srid: Optional[int] = None,
 ) -> None:
     """
     Inserts data into a PostgreSQL/PostGIS table using multiple threads.
@@ -179,6 +191,7 @@ def import_layer(
                     property_keys,
                     has_geometry,
                     geom_type,
+                    t_srid,
                 )
                 for chunk in chunks
             ]
@@ -324,6 +337,8 @@ def import_from_file(
     db_credentials: Dict[str, Any],
     file_path: str,
     table_name: str,
+    srid: Optional[int] = None,
+    t_srid: Optional[int] = None,
     num_threads: int = 4,
 ) -> None:
     """
@@ -333,6 +348,10 @@ def import_from_file(
         db_credentials: Database connection details.
         file_path: Path to the vector file.
         table_name: Name of the target table.
+        srid: Optional Spatial Reference System Identifier. If provided, this SRID will be used
+              instead of auto-detecting from the file. If None, SRID will be auto-detected.
+        t_srid: Optional target Spatial Reference System Identifier. If provided, geometry will be
+                reprojected to this SRID. If None, geometry will use the source SRID.
         num_threads: Number of threads to use for the insertion.
     """
     if "osgeo.ogr" not in sys.modules:
@@ -351,23 +370,27 @@ def import_from_file(
         logger.error(f"No layer found in file: {file_path}")
         raise ValueError(f"No layer found in file: {file_path}")
 
-    # Get SRID
-    srs = layer.GetSpatialRef()
-    if srs:
-        srs.AutoIdentifyEPSG()
-        srid = srs.GetAuthorityCode(None)
-        if srid is None:
-            logger.warning(
-                f"Could not determine SRID for {file_path}. Defaulting to None."
-            )
+    # Get SRID - use provided value, or auto-detect from file if not provided
+    if srid is None:  # Only auto-detect if user didn't provide a custom SRID
+        srs = layer.GetSpatialRef()
+        if srs:
+            srs.AutoIdentifyEPSG()
+            detected_srid = srs.GetAuthorityCode(None)
+            if detected_srid is not None:
+                srid = detected_srid
+                logger.info(f"Auto-detected SRID from file: {srid}")
+            else:
+                logger.warning(f"Could not auto-detect SRID for {file_path}. Using None.")
+        else:
+            logger.warning(f"No spatial reference found in {file_path}. Using None.")
     else:
-        srid = None
-        logger.warning(
-            f"No spatial reference found for {file_path}. Defaulting to None."
-        )
+        logger.info(f"Using user-provided SRID: {srid}")
 
+    # Determine which SRID to use for table creation (target SRID if provided, else source SRID)
+    table_srid = t_srid if t_srid is not None else srid
+    
     # Create table before inserting data
-    create_table_from_layer(db_credentials, layer, table_name, srid)
+    create_table_from_layer(db_credentials, layer, table_name, table_srid)
 
     # Get columns and property keys
     layer_defn = layer.GetLayerDefn()
@@ -399,4 +422,5 @@ def import_from_file(
         has_geometry=True,
         num_threads=num_threads,
         geom_type="wkt",
+        t_srid=t_srid,
     )

@@ -243,7 +243,11 @@ def run_soil(state: str, config_path: Optional[str] = None) -> int:
 
 
 def run_import_file(
-    file_path: str, table_name: str, config_path: Optional[str] = None
+    file_path: str, 
+    table_name: str, 
+    config_path: Optional[str] = None,
+    srid: Optional[int] = None,
+    t_srid: Optional[int] = None
 ) -> int:
     """
     Import data from a file into the database.
@@ -252,6 +256,8 @@ def run_import_file(
         file_path: Path to the file to import.
         table_name: Name of the target table.
         config_path: Optional path to configuration file.
+        srid: Optional source SRID to override file auto-detection.
+        t_srid: Optional target SRID for geometry reprojection.
 
     Returns:
         Exit code (0 for success, non-zero for failure)
@@ -259,7 +265,7 @@ def run_import_file(
     try:
         config = get_config()
         db_creds = config.postgres_dsn_dict
-        import_from_file(db_creds, file_path, table_name)
+        import_from_file(db_creds, file_path, table_name, srid=srid, t_srid=t_srid)
         return 0
     except Exception as e:
         logging.error(f"Error importing file {file_path}: {e}")
@@ -329,6 +335,8 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
     import_parser = subparsers.add_parser("import-file", help="Import data from a file")
     import_parser.add_argument("file_path", help="Path to the file to import")
     import_parser.add_argument("table_name", help="Name of the target table")
+    import_parser.add_argument("--srid", type=int, help="Optional source SRID to override file auto-detection")
+    import_parser.add_argument("--t-srid", type=int, dest="t_srid", help="Optional target SRID for geometry reprojection")
 
     # Add new subparsers for app table processing
     app_taxlot_parser = subparsers.add_parser(
@@ -364,7 +372,13 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
     elif args.command == "soil":
         return run_soil(args.state, None)
     elif args.command == "import-file":
-        return run_import_file(args.file_path, args.table_name, None)
+        return run_import_file(
+            args.file_path, 
+            args.table_name, 
+            None,
+            srid=args.srid,
+            t_srid=args.t_srid
+        )
     elif args.command == "app-taxlot":
         return run_app_taxlot(args.state, None)
     elif args.command == "app-coa":
