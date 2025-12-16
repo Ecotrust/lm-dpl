@@ -175,6 +175,14 @@ class SSURGOProcessor:
         self.logger.info(f"Initializing SSURGO processor for state: {state}")
         self.mukeys = self.fetch_mukeys(state)
         self.logger.info(f"Found {len(self.mukeys)} MUKEYS for state {state}")
+        name_dict = {
+            "OR": "oregon",
+            "WA": "washington",
+        }
+        try:
+            self.st_prefix = name_dict[state]
+        except KeyError:
+            raise ValueError(f"Invalid state code {state} passed to SSURGOProcessor")
 
     def _fetch_data(self, q: str, mukeys: List[str]) -> Optional[List[Dict[str, Any]]]:
         """
@@ -232,6 +240,8 @@ class SSURGOProcessor:
 
         self.logger.info(f"Fetching tabular data for {len(self.mukeys)} mukeys...")
 
+        table_name = f"s_{self.st_prefix}_soil_data"
+
         # For most cases we won't need concurrency
         all_results = []
         if concurrent:
@@ -248,7 +258,7 @@ class SSURGOProcessor:
                         import_layer(
                             db_credentials=db_credentials,
                             data=batch_result,
-                            table_name="s_ssurgo_data",
+                            table_name=table_name,
                             columns=[
                                 "mukey",
                                 "muname",
@@ -287,6 +297,7 @@ class SSURGOProcessor:
             table_name: Name of the target table
             srid: Spatial Reference System Identifier (default: 3857 for Web Mercator)
         """
+        table_name = f"s_{self.st_prefix}_soil_geom"
         # Use the context manager to fetch data concurrently
         with ConcurrentFetcher(
             self._fetch_data, self.sp_q, self.mukeys, batch_size, max_workers
@@ -297,7 +308,7 @@ class SSURGOProcessor:
                     import_geospatial_layer(
                         db_credentials=db_credentials,
                         data=batch_result,
-                        table_name="s_ssurgo_geom",
+                        table_name=table_name,
                         srid=3857,
                         columns=["mukey", "areasym", "musym", "spatialversion", "geom"],
                         property_keys=["mukey", "areasym", "musym", "spatialversion"],
@@ -333,17 +344,12 @@ def main(state: str, config_path: Optional[str] = None) -> None:
     # Initialize SSURGO processor with state
     ssurgo_processor = SSURGOProcessor(state=state)
 
-    state_name = {
-        "OR": "oregon",
-        "WA": "washington",
-    }
-
     try:
         with DatabaseManager(dsn) as db_manager:
             # Create staging schema
             sql_script_path = os.path.join(
                 os.path.dirname(__file__),
-                f"{state_name.get(state)}_app_soil_schema.sql",
+                f"{ssurgo_processor.st_prefix}_app_soil_schema.sql",
             )
             db_manager.execute_from_file(sql_script_path)
             logger.info("Database staging schema created successfully")
@@ -356,6 +362,38 @@ def main(state: str, config_path: Optional[str] = None) -> None:
     except Exception as e:
         logger.error(f"Error during SSURGO processing: {e}")
         raise
+
+
+def process_soil_table(state: str) -> int:
+    """
+    Process raw soil data into final application tables by executing the state-specific SQL script.
+    
+    Args:
+        state: Full state name ('oregon' or 'washington')
+    
+    Returns:
+        Exit code (0 for success, 1 for failure)
+    """
+    import logging
+    from ..utils.config import get_config
+    from ..clients.db_manager import DatabaseManager
+    import os
+    
+    state = state.lower()
+    if state not in ['oregon', 'washington']:
+        logging.error(f"Invalid state '{state}' for soil processing")
+        return 1
+    
+    try:
+        config = get_config()
+        with DatabaseManager(config.postgres_dsn_dict) as db_manager:
+            sql_path = os.path.join(os.path.dirname(__file__), f"{state}_app_soil.sql")
+            db_manager.execute_from_file(sql_path)
+            logging.info(f"Successfully processed soil data for {state}")
+        return 0
+    except Exception as e:
+        logging.error(f"Error processing soil data for {state}: {e}")
+        return 1
 
 
 if __name__ == "__main__":
