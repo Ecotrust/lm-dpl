@@ -8,6 +8,7 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_fpd_post.sql
    - zoning: 
       description: Zoning
       epsg: 3857
@@ -17,6 +18,7 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_zoning_post.sql
    - plss1: 
       description: Public Land Survey System (First Division)
       epsg: 3857
@@ -35,6 +37,7 @@ oregon:
       fetch: true
       max_records: 2500
       geom: true
+      post_script: lm_dpl/parcels/oregon_plss_post.sql
    - sfd: 
       description: Structural Fire Districts
       epsg: 3857
@@ -44,6 +47,7 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_sfd_post.sql
    - taxlots: 
       description: Oregon Taxlots
       url: https://utility.arcgis.com/usrsvcs/servers/78bbb0d0d9c64583ad5371729c496dcc/rest/services/Secure/DOR_ORMAP/MapServer/3/query?
@@ -87,7 +91,7 @@ oregon:
       outfields: STATE_FIPSCODE,COUNTY_FIPSCODE,COUNTY_NAME
       dtypes: VARCHAR(2),VARCHAR(3),VARCHAR(120)
       where: "STATE_FIPSCODE = '41'"
-      fetch: true
+      fetch: false
       max_records: 2000
       geom: true
 washington:
@@ -100,6 +104,7 @@ washington:
       fetch: true
       max_records: 2000 
       geom: true
+      post_script: lm_dpl/parcels/washington_taxlot_post.sql
    - zoning:
       description: Zoning
       url: https://services6.arcgis.com/tboeqGwETr5ppr5Q/ArcGIS/rest/services/WAZA_Prototype_Layers/FeatureServer/0/query?
@@ -127,6 +132,7 @@ washington:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/washington_plss_post.sql
    - fpd:
       description: Fire Protection Districts
       url: https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildFire_Data/MapServer/6/query?

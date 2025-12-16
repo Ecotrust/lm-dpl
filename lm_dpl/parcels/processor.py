@@ -157,6 +157,18 @@ class ParcelProcessor:
                 self.logger.info(
                     f"Successfully processed {len(data_rows)} records for {service_name}"
                 )
+                # Add post-procesing SQL script if available from config
+                post_script = service_info.get("post_script")
+                if post_script:
+                    if os.path.exists(post_script):
+                        self.logger.info(
+                            f"Running post-processing SQL script: {post_script}"
+                        )
+                        with DatabaseManager(self.db_credentials) as db:
+                            db.execute_from_file(post_script)
+                        self.logger.info(f"Successfully processed {post_script}")
+                    else:
+                        self.logger.warning(f"No post-processing SQL script found")
             else:
                 self.logger.warning(f"No valid data to insert for {service_name}")
 
@@ -229,7 +241,12 @@ class ParcelProcessor:
         )
 
 
-def main(state: str, config_path: str = None, test_endpoints: bool = False, overwrite: bool = False) -> None:
+def main(
+    state: str,
+    config_path: str = None,
+    test_endpoints: bool = False,
+    overwrite: bool = False,
+) -> None:
     """
     Main entry point for parcel processing from CLI.
 
