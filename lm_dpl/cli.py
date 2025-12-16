@@ -36,7 +36,19 @@ def get_available_layers():
     except Exception as e:
         logging.warning(f"Could not load layers from endpoints configuration: {e}")
         # Fallback to original hardcoded list, always include soil and elevation
-        return sorted(["elevation", "soil", "fpd", "zoning", "plss1", "plss2", "sfd", "taxlots", "coa"])
+        return sorted(
+            [
+                "elevation",
+                "soil",
+                "fpd",
+                "zoning",
+                "plss1",
+                "plss2",
+                "sfd",
+                "taxlots",
+                "coa",
+            ]
+        )
 
 
 def normalize_state(state: str, to: str = "name") -> str:
@@ -67,16 +79,16 @@ def normalize_state(state: str, to: str = "name") -> str:
 
 def run_fetch(
     state: str,
-    layer: Optional[str] = None,
+    layers: Optional[list[str]] = None,
     config_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> int:
     """
-    Fetch data from remote sources for the specified layer and state.
+    Fetch data from remote sources for the specified layers and state.
 
     Args:
         state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        layer: Specific layer to fetch (optional, if None fetch all available)
+        layers: List of specific layers to fetch (optional, if None fetch all available)
         config_path: Optional path to custom endpoints configuration file
         overwrite: If True, drop and recreate tables before processing
 
@@ -92,26 +104,32 @@ def run_fetch(
         normalized_state = normalize_state(state)
         logging.info(f"Fetching data for {normalized_state}")
 
-        # Handle soil data separately
-        if layer == "soil":
-            normalized_state_abbr = normalize_state(state, to="abbr")
-            soil_main(normalized_state_abbr, config_path)
-            return 0
+        # Handle soil and elevation data separately if they're in the layers list
+        if layers:
+            if "soil" in layers:
+                normalized_state_abbr = normalize_state(state, to="abbr")
+                soil_main(normalized_state_abbr, config_path)
+                layers.remove("soil")
 
-        # Handle elevation data separately
-        if layer == "elevation":
-            elevation_main(normalized_state)
-            return 0
+            if "elevation" in layers:
+                elevation_main(normalized_state)
+                layers.remove("elevation")
+
+            if not layers:  # Only soil and/or elevation were requested
+                return 0
 
         # Handle parcel-related layers
         processor = ParcelProcessor(normalized_state, config_path=config_path)
 
-        if layer:
-            try:
-                processor.process_service(layer, overwrite=overwrite)
-            except Exception as e:
-                logging.error(f"Error fetching layer '{layer}' for state {normalized_state}: {e}")
-                return 1
+        if layers:
+            for layer in layers:
+                try:
+                    processor.process_service(layer, overwrite=overwrite)
+                except Exception as e:
+                    logging.error(
+                        f"Error fetching layer '{layer}' for state {normalized_state}: {e}"
+                    )
+                    return 1
         else:
             # Fetch all layers
             processor.fetch(overwrite=overwrite)
@@ -149,6 +167,7 @@ def run_process(table: str, state: str) -> int:
             processor.process_app_coa()
         elif table == "soil":
             from lm_dpl.soil.processor import process_soil_table
+
             normalized_state = normalize_state(state)
             return process_soil_table(normalized_state)
         elif table == "populationpoint":
@@ -165,11 +184,11 @@ def run_process(table: str, state: str) -> int:
 
 
 def run_import_file(
-    file_path: str, 
-    table_name: str, 
+    file_path: str,
+    table_name: str,
     config_path: Optional[str] = None,
     srid: Optional[int] = None,
-    t_srid: Optional[int] = None
+    t_srid: Optional[int] = None,
 ) -> int:
     """
     Import data from a file into the database.
@@ -227,13 +246,9 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
     available_layers = get_available_layers()
 
     # Fetch subcommand
-    fetch_parser = subparsers.add_parser(
-        "fetch", 
-        help="Fetch data from remote sources"
-    )
+    fetch_parser = subparsers.add_parser("fetch", help="Fetch data from remote sources")
     fetch_parser.add_argument(
-        "state",
-        help="State name or abbreviation (e.g., OR, WA, oregon, washington)"
+        "state", help="State name or abbreviation (e.g., OR, WA, oregon, washington)"
     )
     fetch_parser.add_argument(
         "--layer",
@@ -243,8 +258,7 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
         help=f"Fetch specific layer(s). Available: {', '.join(available_layers)}. Can be used multiple times for multiple layers.",
     )
     fetch_parser.add_argument(
-        "--config", 
-        help="Path to custom endpoints configuration file"
+        "--config", help="Path to custom endpoints configuration file"
     )
     fetch_parser.add_argument(
         "--overwrite",
@@ -255,44 +269,32 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
 
     # Process subcommand
     process_parser = subparsers.add_parser(
-        "process",
-        help="Process fetched data to generate application tables"
+        "process", help="Process fetched data to generate application tables"
     )
     process_parser.add_argument(
         "--table",
         required=True,
         choices=["taxlots", "coa", "soil", "populationpoint"],
-        help="Table to process"
+        help="Table to process",
     )
     process_parser.add_argument(
         "--state",
         required=True,
-        help="State name or abbreviation (e.g., OR, WA, oregon, washington)"
+        help="State name or abbreviation (e.g., OR, WA, oregon, washington)",
     )
 
     # Import-file subcommand (unchanged)
-    import_parser = subparsers.add_parser(
-        "import-file", 
-        help="Import data from a file"
+    import_parser = subparsers.add_parser("import-file", help="Import data from a file")
+    import_parser.add_argument("file_path", help="Path to the file to import")
+    import_parser.add_argument("table_name", help="Name of the target table")
+    import_parser.add_argument(
+        "--srid", type=int, help="Optional source SRID to override file auto-detection"
     )
     import_parser.add_argument(
-        "file_path", 
-        help="Path to the file to import"
-    )
-    import_parser.add_argument(
-        "table_name", 
-        help="Name of the target table"
-    )
-    import_parser.add_argument(
-        "--srid", 
-        type=int, 
-        help="Optional source SRID to override file auto-detection"
-    )
-    import_parser.add_argument(
-        "--t-srid", 
-        type=int, 
-        dest="t_srid", 
-        help="Optional target SRID for geometry reprojection"
+        "--t-srid",
+        type=int,
+        dest="t_srid",
+        help="Optional target SRID for geometry reprojection",
     )
 
     args = parser.parse_args()
@@ -305,17 +307,14 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
 
     if args.command == "fetch":
         layers = args.layer  # Can be None or a list
-        return run_fetch(args.state, layer=layers[0] if layers and len(layers) == 1 else None, 
-                        config_path=args.config, overwrite=args.overwrite)
+        return run_fetch(
+            args.state, layers=layers, config_path=args.config, overwrite=args.overwrite
+        )
     elif args.command == "process":
         return run_process(args.table, args.state)
     elif args.command == "import-file":
         return run_import_file(
-            args.file_path,
-            args.table_name,
-            None,
-            srid=args.srid,
-            t_srid=args.t_srid
+            args.file_path, args.table_name, None, srid=args.srid, t_srid=args.t_srid
         )
     else:
         # This should not happen due to required=True on subparsers
