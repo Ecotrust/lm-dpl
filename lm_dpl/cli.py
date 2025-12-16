@@ -29,11 +29,14 @@ def get_available_layers():
             if state_info:
                 all_layers.update(state_info.keys())
 
+        # Always include soil and elevation as they're handled by separate processors
+        all_layers.add("soil")
+        all_layers.add("elevation")
         return sorted(list(all_layers))
     except Exception as e:
         logging.warning(f"Could not load layers from endpoints configuration: {e}")
-        # Fallback to original hardcoded list
-        return ["fpd", "zoning", "plss1", "plss2", "sfd", "taxlots", "coa"]
+        # Fallback to original hardcoded list, always include soil and elevation
+        return sorted(["elevation", "soil", "fpd", "zoning", "plss1", "plss2", "sfd", "taxlots", "coa"])
 
 
 def normalize_state(state: str, to: str = "name") -> str:
@@ -62,183 +65,102 @@ def normalize_state(state: str, to: str = "name") -> str:
         raise ValueError("Parameter 'to' must be either 'name' or 'abbr'")
 
 
-def run_parcels(
-    state: Optional[str] = None,
+def run_fetch(
+    state: str,
+    layer: Optional[str] = None,
     config_path: Optional[str] = None,
-    layers: Optional[list] = None,
     overwrite: bool = False,
 ) -> int:
     """
-    Run parcel processing for the specified state.
+    Fetch data from remote sources for the specified layer and state.
 
     Args:
-        state: Optional state name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
+        layer: Specific layer to fetch (optional, if None fetch all available)
         config_path: Optional path to custom endpoints configuration file
-        layers: Optional list of specific layers to process (e.g., ['plss1', 'plss2'])
         overwrite: If True, drop and recreate tables before processing
 
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
     try:
-        # Import here to avoid circular imports
         from lm_dpl.parcels.processor import ParcelProcessor
+        from lm_dpl.soil.processor import main as soil_main
+        from lm_dpl.forest.parcel_elevation import main as elevation_main
         import yaml
 
-        # Determine state: use CLI state if provided, otherwise extract from config
-        if config_path:
-            # Load config to extract state
-            with open(config_path, "r") as f:
-                config = yaml.safe_load(f)
+        normalized_state = normalize_state(state)
+        logging.info(f"Fetching data for {normalized_state}")
 
-            # Extract state from top-level keys
-            config_states = list(config.keys())
-            if not config_states:
-                raise ValueError(f"No state found in config file: {config_path}")
+        # Handle soil data separately
+        if layer == "soil":
+            normalized_state_abbr = normalize_state(state, to="abbr")
+            soil_main(normalized_state_abbr, config_path)
+            return 0
 
-            config_state = config_states[0]  # Use first state found
+        # Handle elevation data separately
+        if layer == "elevation":
+            elevation_main(normalized_state)
+            return 0
 
-            # Use CLI state if provided, otherwise use config state
-            if state:
-                normalized_state = normalize_state(state)
-                logging.info(
-                    f"Using state from command line: {normalized_state} (overriding config state: {config_state})"
-                )
-            else:
-                normalized_state = normalize_state(config_state)
-                logging.info(f"Using state from config file: {normalized_state}")
-        else:
-            # No config file, state is required
-            if not state:
-                raise ValueError(
-                    "State argument is required when no config file is provided"
-                )
-            normalized_state = normalize_state(state)
-            logging.info(f"Using state from command line: {normalized_state}")
-
+        # Handle parcel-related layers
         processor = ParcelProcessor(normalized_state, config_path=config_path)
 
-        # Process only specified layers
-        if layers:
-            for layer in layers:
-                try:
-                    processor.process_service(layer, overwrite=overwrite)
-                except Exception as e:
-                    logging.error(
-                        f"Error processing layer '{layer}' for state {normalized_state}: {e}"
-                    )
-                    continue
+        if layer:
+            try:
+                processor.process_service(layer, overwrite=overwrite)
+            except Exception as e:
+                logging.error(f"Error fetching layer '{layer}' for state {normalized_state}: {e}")
+                return 1
         else:
-            # Process all layers
+            # Fetch all layers
             processor.fetch(overwrite=overwrite)
 
         return 0
 
     except Exception as e:
-        logging.error(f"Error processing parcels: {e}")
+        logging.error(f"Error fetching data: {e}")
         return 1
 
 
-def run_app_taxlot(state: str, config_path: Optional[str] = None) -> int:
+def run_process(table: str, state: str) -> int:
     """
-    Run app_taxlot table processing for the specified state.
+    Process data to generate application tables (app_taxlots, app_coa, app_soil, app_populationpoint).
 
     Args:
+        table: Table to process (choices: taxlots, coa, soil, populationpoint)
         state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        config_path: Optional path to configuration file
 
     Returns:
         Exit code (0 for success, non-zero for failure)
     """
     try:
-        # Import here to avoid circular imports
         from lm_dpl.parcels.processor import ParcelProcessor
-
-        normalized_state = normalize_state(state)
-        processor = ParcelProcessor(normalized_state)
-        processor.process_app_taxlot()
-
-        return 0
-
-    except Exception as e:
-        logging.error(f"Error processing app_taxlot for state {state}: {e}")
-        return 1
-
-
-def run_app_coa(state: str, config_path: Optional[str] = None) -> int:
-    """
-    Run app_coa table processing for the specified state.
-
-    Args:
-        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        config_path: Optional path to configuration file
-
-    Returns:
-        Exit code (0 for success, non-zero for failure)
-    """
-    try:
-        # Import here to avoid circular imports
-        from lm_dpl.parcels.processor import ParcelProcessor
-
-        normalized_state = normalize_state(state)
-        processor = ParcelProcessor(normalized_state)
-        processor.process_app_coa()
-
-        return 0
-
-    except Exception as e:
-        logging.error(f"Error processing app_coa for state {state}: {e}")
-        return 1
-
-
-def run_app_populationpoint(state: str, config_path: Optional[str] = None) -> int:
-    """
-    Run app_populationpoint table processing for the specified state.
-
-    Args:
-        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        config_path: Optional path to configuration file
-
-    Returns:
-        Exit code (0 for success, non-zero for failure)
-    """
-    try:
-        # Import here to avoid circular imports
-        from lm_dpl.parcels.processor import ParcelProcessor
-
-        normalized_state = normalize_state(state)
-        processor = ParcelProcessor(normalized_state)
-        processor.process_app_populationpoint()
-
-        return 0
-
-    except Exception as e:
-        logging.error(f"Error processing app_populationpoint for state {state}: {e}")
-        return 1
-
-
-def run_soil(state: str, config_path: Optional[str] = None) -> int:
-    """
-    Run soil processing for the specified state.
-
-    Args:
-        state: State name or abbreviation (e.g., 'oregon', 'OR', 'washington', 'WA')
-        config_path: Optional path to configuration file
-
-    Returns:
-        Exit code (0 for success, non-zero for failure)
-    """
-    try:
-        # Import here to avoid circular imports
         from lm_dpl.soil.processor import main as soil_main
 
-        normalized_state = normalize_state(state, to="abbr")
+        normalized_state = normalize_state(state)
+        logging.info(f"Processing {table} table for {normalized_state}")
 
-        soil_main(normalized_state, config_path)
+        if table == "taxlots":
+            processor = ParcelProcessor(normalized_state)
+            processor.process_app_taxlot()
+        elif table == "coa":
+            processor = ParcelProcessor(normalized_state)
+            processor.process_app_coa()
+        elif table == "soil":
+            from lm_dpl.soil.processor import process_soil_table
+            normalized_state = normalize_state(state)
+            return process_soil_table(normalized_state)
+        elif table == "populationpoint":
+            processor = ParcelProcessor(normalized_state)
+            processor.process_app_populationpoint()
+        else:
+            raise ValueError(f"Unknown table: {table}")
+
         return 0
 
     except Exception as e:
-        logging.error(f"Error processing soil data for state {state}: {e}")
+        logging.error(f"Error processing {table} for state {state}: {e}")
         return 1
 
 
@@ -279,15 +201,16 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-lm-dpl parcels --config config.yml           # Process parcels with state from config file
-lm-dpl parcels --config config.yml oregon    # Process parcels for Oregon with custom config (override)
-lm-dpl parcels oregon                        # Process parcels for Oregon with default config
-lm-dpl --verbose soil OR                     # Process soil data for Oregon with verbose logging
-lm-dpl parcels washington                    # Process parcels for Washington
-lm-dpl soil WA                               # Process soil data for Washington
-lm-dpl parcels --layer fpd oregon            # Process only FPD layer for Oregon
-lm-dpl parcels --layer fpd --layer plss1 oregon  # Process FPD and PLSS1 layers for Oregon
-lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for Oregon (short form)
+lm-dpl fetch --layer fpd OR                  # Fetch FPD layer for Oregon
+lm-dpl fetch --layer soil WA                 # Fetch soil data for Washington
+lm-dpl fetch --layer fpd --layer plss1 OR    # Fetch multiple layers for Oregon
+lm-dpl fetch --config config.yml OR          # Fetch all layers using custom config
+lm-dpl fetch --overwrite --layer taxlots OR  # Fetch taxlots and drop existing data
+lm-dpl process --table taxlots --state OR    # Process app_taxlots table for Oregon
+lm-dpl process --table coa --state WA        # Process app_coa table for Washington
+lm-dpl process --table soil --state OR       # Process soil data for Oregon
+lm-dpl import-file data.shp mytable          # Import shapefile into mytable
+lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
         """,
     )
 
@@ -300,91 +223,100 @@ lm-dpl parcels -l fpd -l plss2 oregon        # Process FPD and PLSS2 layers for 
         dest="command", help="Command to execute", required=True
     )
 
-    parcels_parser = subparsers.add_parser("parcels", help="Process parcel data")
-    parcels_parser.add_argument(
-        "state",
-        nargs="?",
-        help="State name or abbreviation (e.g., oregon, OR, washington, WA). Optional when using --config",
-    )
-    parcels_parser.add_argument(
-        "--config", help="Path to custom endpoints configuration file"
-    )
-
     # Get available layers dynamically from endpoints configuration
     available_layers = get_available_layers()
 
-    parcels_parser.add_argument(
+    # Fetch subcommand
+    fetch_parser = subparsers.add_parser(
+        "fetch", 
+        help="Fetch data from remote sources"
+    )
+    fetch_parser.add_argument(
+        "state",
+        help="State name or abbreviation (e.g., OR, WA, oregon, washington)"
+    )
+    fetch_parser.add_argument(
         "--layer",
         "-l",
         action="append",
         choices=available_layers,
-        help=f"Process specific layer(s). Available: {', '.join(available_layers)}. Can be used multiple times for multiple layers.",
+        help=f"Fetch specific layer(s). Available: {', '.join(available_layers)}. Can be used multiple times for multiple layers.",
     )
-    parcels_parser.add_argument(
+    fetch_parser.add_argument(
+        "--config", 
+        help="Path to custom endpoints configuration file"
+    )
+    fetch_parser.add_argument(
         "--overwrite",
         "-o",
         action="store_true",
-        help="Drop and recreate tables before processing (WARNING: This will delete existing data)",
+        help="Drop and recreate tables before fetching (WARNING: This will delete existing data)",
     )
 
-    soil_parser = subparsers.add_parser("soil", help="Process soil data")
-    soil_parser.add_argument(
-        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    # Process subcommand
+    process_parser = subparsers.add_parser(
+        "process",
+        help="Process fetched data to generate application tables"
+    )
+    process_parser.add_argument(
+        "--table",
+        required=True,
+        choices=["taxlots", "coa", "soil", "populationpoint"],
+        help="Table to process"
+    )
+    process_parser.add_argument(
+        "--state",
+        required=True,
+        help="State name or abbreviation (e.g., OR, WA, oregon, washington)"
     )
 
-    import_parser = subparsers.add_parser("import-file", help="Import data from a file")
-    import_parser.add_argument("file_path", help="Path to the file to import")
-    import_parser.add_argument("table_name", help="Name of the target table")
-    import_parser.add_argument("--srid", type=int, help="Optional source SRID to override file auto-detection")
-    import_parser.add_argument("--t-srid", type=int, dest="t_srid", help="Optional target SRID for geometry reprojection")
-
-    # Add new subparsers for app table processing
-    app_taxlot_parser = subparsers.add_parser(
-        "app-taxlot", help="Process app_taxlot table"
+    # Import-file subcommand (unchanged)
+    import_parser = subparsers.add_parser(
+        "import-file", 
+        help="Import data from a file"
     )
-    app_taxlot_parser.add_argument(
-        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    import_parser.add_argument(
+        "file_path", 
+        help="Path to the file to import"
     )
-
-    app_coa_parser = subparsers.add_parser("app-coa", help="Process app_coa table")
-    app_coa_parser.add_argument(
-        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    import_parser.add_argument(
+        "table_name", 
+        help="Name of the target table"
     )
-
-    app_populationpoint_parser = subparsers.add_parser(
-        "app-populationpoint", help="Process app_populationpoint table"
+    import_parser.add_argument(
+        "--srid", 
+        type=int, 
+        help="Optional source SRID to override file auto-detection"
     )
-    app_populationpoint_parser.add_argument(
-        "state", help="State name or abbreviation (e.g., oregon, OR, washington, WA)"
+    import_parser.add_argument(
+        "--t-srid", 
+        type=int, 
+        dest="t_srid", 
+        help="Optional target SRID for geometry reprojection"
     )
 
     args = parser.parse_args()
 
-    # Set up basic logging (will be overridden in command functions)
+    # Set up basic logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
         level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
-    if args.command == "parcels":
-        layers = args.layer if args.layer else None
-        return run_parcels(args.state, args.config, layers, overwrite=args.overwrite)
-    elif args.command == "soil":
-        return run_soil(args.state, None)
+    if args.command == "fetch":
+        layers = args.layer  # Can be None or a list
+        return run_fetch(args.state, layer=layers[0] if layers and len(layers) == 1 else None, 
+                        config_path=args.config, overwrite=args.overwrite)
+    elif args.command == "process":
+        return run_process(args.table, args.state)
     elif args.command == "import-file":
         return run_import_file(
-            args.file_path, 
-            args.table_name, 
+            args.file_path,
+            args.table_name,
             None,
             srid=args.srid,
             t_srid=args.t_srid
         )
-    elif args.command == "app-taxlot":
-        return run_app_taxlot(args.state, None)
-    elif args.command == "app-coa":
-        return run_app_coa(args.state, None)
-    elif args.command == "app-populationpoint":
-        return run_app_populationpoint(args.state, None)
     else:
         # This should not happen due to required=True on subparsers
         logging.error(f"Unknown command: {args.command}")
