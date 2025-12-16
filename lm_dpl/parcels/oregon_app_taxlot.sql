@@ -5,10 +5,12 @@ for Django app.models.taxtlot
 BEGIN;
 
 -- Create spatial indexes
+DROP INDEX IF EXISTS s_oregon_taxlots_post_geom_idx;
 CREATE INDEX s_oregon_taxlots_post_geom_idx
     ON s_oregon_taxlots_post
     USING GIST (geom);
 
+DROP INDEX IF EXISTS s_oregon_taxlots_post_hash_idx;
 CREATE INDEX s_oregon_taxlots_post_hash_idx
     ON s_oregon_taxlots_post (geohash10);
 
@@ -71,10 +73,10 @@ huc_join AS (
         w.huc12,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
-            ORDER BY ST_Area(ST_Intersection(t.geom, w.geom)) DESC
+            ORDER BY ST_Area(ST_Intersection(ST_MakeValid(t.geom), ST_MakeValid(w.geom))) DESC
         ) as rn
     FROM s_oregon_taxlots_post t
-    JOIN s_oregon_huc w ON ST_Intersects(t.geom, w.geom)
+    JOIN s_oregon_huc w ON ST_Intersects(ST_MakeValid(t.geom), ST_MakeValid(w.geom))
 ),
 -- 2. PLSS: 
 plss_join AS (
@@ -83,10 +85,10 @@ plss_join AS (
         p.legal_desc,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
-            ORDER BY ST_Area(ST_Intersection(t.geom, p.geom)) DESC
+            ORDER BY ST_Area(ST_Intersection(ST_MakeValid(t.geom), ST_MakeValid(p.geom))) DESC
         ) as rn
     FROM s_oregon_taxlots_post t
-    JOIN s_oregon_plss p ON ST_Intersects(t.geom, p.geom)
+    JOIN s_oregon_plss p ON ST_Intersects(ST_MakeValid(t.geom), ST_MakeValid(p.geom))
 ),
 -- 3. Forest Protection Districts: 
 fpd_join AS (
@@ -95,10 +97,10 @@ fpd_join AS (
         f.odf_fpd,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
-            ORDER BY ST_Area(ST_Intersection(t.geom, f.geom)) DESC
+            ORDER BY ST_Area(ST_Intersection(ST_MakeValid(t.geom), ST_MakeValid(f.geom))) DESC
         ) as rn
     FROM s_oregon_taxlots_post t
-    JOIN s_oregon_fpd f ON ST_Intersects(t.geom, f.geom)
+    JOIN s_oregon_fpd f ON ST_Intersects(ST_MakeValid(t.geom), ST_MakeValid(f.geom))
 ),
 -- 4. Structural Fire Districts: 
 sfd_join AS (
@@ -107,10 +109,10 @@ sfd_join AS (
         s.agency_name AS agency,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
-            ORDER BY ST_Area(ST_Intersection(t.geom, s.geom)) DESC
+            ORDER BY ST_Area(ST_Intersection(ST_MakeValid(t.geom), ST_MakeValid(s.geom))) DESC
         ) as rn
     FROM s_oregon_taxlots_post t
-    JOIN s_oregon_sfd s ON ST_Intersects(t.geom, s.geom)
+    JOIN s_oregon_sfd s ON ST_Intersects(ST_MakeValid(t.geom), ST_MakeValid(s.geom))
 ),
 -- 5. Zoning
 zoning_join AS (
@@ -119,10 +121,10 @@ zoning_join AS (
         z.orzdesc,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
-            ORDER BY ST_Area(ST_Intersection(t.geom, z.geom)) DESC
+            ORDER BY ST_Area(ST_Intersection(ST_MakeValid(t.geom), ST_MakeValid(z.geom))) DESC
         ) as rn
     FROM s_oregon_taxlots_post t
-    JOIN s_oregon_zoning z ON ST_Intersects(t.geom, z.geom)
+    JOIN s_oregon_zoning z ON ST_Intersects(ST_MakeValid(t.geom), ST_MakeValid(z.geom))
 ),
 -- 6. Elevation:
 elev_join AS (
@@ -132,10 +134,11 @@ elev_join AS (
     SELECT e.* 
     FROM (
         SELECT * FROM s_oregon_elevation
-        WHERE 100*forest_pix/total_pix < 20
+        WHERE 100*forest_pix/total_pix < 20 
+            AND total_pix > 0
     ) e
     JOIN s_oregon_taxlots_post t ON t.geohash10 = e.geohash10
-    JOIN s_oregon_ppa p ON ST_Intersects(p.geom, t.geom)
+    JOIN s_oregon_ppa p ON ST_Intersects(ST_MakeValid(p.geom), ST_MakeValid(t.geom))
 )
 -- Final insert into oregon_taxlots table
 INSERT INTO oregon_app_taxlot (
@@ -158,13 +161,13 @@ SELECT
     sfd.agency,
     zn.orzdesc,
     huc.huc12,
-    t.ortaxlot,
+    NULL,
     e.min_elev,
     e.max_elev,
     plss.legal_desc,
     t.county,
     'ORMAP',
-    t.objectid,
+    t.geohash10,
     t.maptaxlot,
     t.geom
 FROM s_oregon_taxlots_post t
