@@ -1,6 +1,6 @@
 -- PopulationPoint table
-DROP TABLE IF EXISTS app_populationpoint;
-CREATE TABLE app_populationpoint (
+DROP TABLE IF EXISTS oregon_app_populationpoint;
+CREATE TABLE oregon_app_populationpoint (
     id SERIAL PRIMARY KEY,
     classification VARCHAR(100) NOT NULL DEFAULT 'city',
     state VARCHAR(30) NOT NULL DEFAULT 'OR',
@@ -12,7 +12,7 @@ CREATE TABLE app_populationpoint (
     geometry geometry(POINT, 3857) DEFAULT NULL
 );
 
-INSERT INTO app_populationpoint (
+INSERT INTO oregon_app_populationpoint (
     classification,
     state,
     population,

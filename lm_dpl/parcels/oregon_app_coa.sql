@@ -1,6 +1,6 @@
 -- COA table
-DROP TABLE IF EXISTS app_coa;
-CREATE TABLE IF NOT EXISTS app_coa (
+DROP TABLE IF EXISTS oregon_app_coa;
+CREATE TABLE IF NOT EXISTS oregon_app_coa (
     id SERIAL PRIMARY KEY,
     huc12 VARCHAR(24) NOT NULL,
     coa_name VARCHAR(255) DEFAULT NULL,
@@ -21,7 +21,7 @@ WITH coa_join AS (
     FROM s_oregon_coa c
     JOIN s_oregon_huc h ON ST_Intersects(c.geom, h.geom)
 )
-INSERT INTO app_coa (
+INSERT INTO oregon_app_coa (
     huc12, 
     coa_id, 
     coa_name, 

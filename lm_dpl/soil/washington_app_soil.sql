@@ -46,11 +46,11 @@ WITH soils_join (
         s.avg_rs_l,
         s.avg_rs_h,
         g.geom
-    FROM s_ssurgo_data AS s
-    LEFT JOIN s_ssurgo_geom AS g
+    FROM s_washington_soil_data AS s
+    LEFT JOIN s_washington_soil_geom AS g
     ON s.mukey = g.mukey
 )
-INSERT INTO app_soiltype (
+INSERT INTO washington_app_soiltype (
     mukey, 
     areasym, 
     spatial, 
