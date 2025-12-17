@@ -67,10 +67,10 @@ graph TD
 
 #### Workflow Stages:
 
-**1. Data Sources** - The pipeline integrates data from three primary sources:
+**1. Data Sources** - The pipeline integrates data from three primary sources. See [Data Sources](docs/data_sources.md) for more details.
 - **Parcel Data**: County and state REST APIs to fetch data such as taxlots, PLSS, and FPD data. 
 - **Soil Data**: USDA Soil Data Access (SDA) API for soil characteristics and classifications
-- **Forest Data**: Remote sensing sources for elevation data and forest cover data.
+- **Remote Sensing Data**: Remote sensing sources for elevation data and forest cover data.
 
 **2. Fetch Stage** - Raw data is fetched from external sources and loaded into staging tables:
 - **API Integration**: Handles connection, rate limiting, and query construction.
@@ -111,7 +111,7 @@ cd lm-dpl
 2. (Optional) Create and activate a virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  
 ```
 
 3. Install in editable mode with development dependencies:
