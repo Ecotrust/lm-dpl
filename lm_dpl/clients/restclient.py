@@ -594,12 +594,14 @@ class LandmapperRESTClient:
             for state_name, state_service in self._states.items()
         }
 
-    def test_endpoints(self, timeout: int = 30) -> Dict[str, Any]:
+    def test_endpoints(self, timeout: int = 30, state: Optional[str] = None) -> Dict[str, Any]:
         """
-        Test connectivity and response validation for all configured REST endpoints.
+        Test connectivity and response validation for REST endpoints.
 
         Args:
             timeout: Request timeout in seconds (default: 30)
+            state: Optional state name to test only endpoints for that specific state.
+                   If None, tests all states (default: None)
 
         Returns:
             Dictionary containing test results with the following structure:
@@ -622,7 +624,18 @@ class LandmapperRESTClient:
                     }
                 }
             }
+
+        Raises:
+            ValueError: If the specified state does not exist in the configuration
         """
+        # Validate state parameter if provided
+        if state is not None:
+            if state not in self._states:
+                raise ValueError(f"State '{state}' not found. Available states: {list(self._states.keys())}")
+            states_to_test = {state: self._states[state]}
+        else:
+            states_to_test = self._states
+
         results = {}
         total_endpoints = 0
         successful = 0
@@ -630,7 +643,7 @@ class LandmapperRESTClient:
 
         print("Testing REST endpoints connectivity...")
 
-        for state_name, state_service in self._states.items():
+        for state_name, state_service in states_to_test.items():
             state_results = {}
             services = state_service.list_services()
 

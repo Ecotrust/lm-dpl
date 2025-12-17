@@ -213,6 +213,55 @@ def run_import_file(
         return 1
 
 
+def run_test_endpoints(
+    state: Optional[str] = None,
+    timeout: int = 30,
+    config_path: Optional[str] = None,
+) -> int:
+    """
+    Test connectivity and response validation for REST endpoints.
+
+    Args:
+        state: Optional state name to test only endpoints for that specific state.
+               If None, tests all states.
+        timeout: Request timeout in seconds (default: 30).
+        config_path: Optional path to custom endpoints configuration file.
+                     If None, uses default configuration.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure)
+    """
+    try:
+        from lm_dpl.clients.restclient import LandmapperRESTClient
+
+        logging.info("Testing REST endpoints connectivity...")
+        client = LandmapperRESTClient(config_path=config_path)
+        results = client.test_endpoints(timeout=timeout, state=state)
+
+        # The test_endpoints method already prints summary and details.
+        # We can optionally log the summary at INFO level.
+        summary = results["summary"]
+        logging.info(
+            f"Test completed: {summary['successful']}/{summary['total_endpoints']} "
+            f"endpoints successful ({summary['success_rate']}%)"
+        )
+
+        if summary["failed"] > 0:
+            logging.warning(f"{summary['failed']} endpoints failed.")
+            # In verbose mode, we could log detailed failures, but the method already prints them.
+            return 1
+        return 0
+    except ValueError as e:
+        logging.error(f"Invalid state or configuration: {e}")
+        return 1
+    except FileNotFoundError as e:
+        logging.error(f"Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        logging.error(f"Error testing endpoints: {e}")
+        return 1
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
@@ -222,14 +271,11 @@ def main() -> int:
 Examples:
 lm-dpl fetch --layer fpd OR                  # Fetch FPD layer for Oregon
 lm-dpl fetch --layer soil WA                 # Fetch soil data for Washington
-lm-dpl fetch --layer fpd --layer plss1 OR    # Fetch multiple layers for Oregon
 lm-dpl fetch --config config.yml OR          # Fetch all layers using custom config
 lm-dpl fetch --overwrite --layer taxlots OR  # Fetch taxlots and drop existing data
 lm-dpl process --table taxlots --state OR    # Process app_taxlots table for Oregon
-lm-dpl process --table coa --state WA        # Process app_coa table for Washington
-lm-dpl process --table soil --state OR       # Process soil data for Oregon
 lm-dpl import-file data.shp mytable          # Import shapefile into mytable
-lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
+lm-dpl test-endpoints --state oregon --timeout 20  # Test endpoints for Oregon with 20s timeout
         """,
     )
 
@@ -297,6 +343,26 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
         help="Optional target SRID for geometry reprojection",
     )
 
+    # Test-endpoints subcommand
+    test_parser = subparsers.add_parser(
+        "test-endpoints",
+        help="Test connectivity and response validation for REST endpoints",
+    )
+    test_parser.add_argument(
+        "--state",
+        help="Optional state name to test only endpoints for that specific state (e.g., oregon, washington)",
+    )
+    test_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=30,
+        help="Request timeout in seconds (default: 30)",
+    )
+    test_parser.add_argument(
+        "--config",
+        help="Path to custom endpoints configuration file (default: lm_dpl/clients/endpoints.yaml)",
+    )
+
     args = parser.parse_args()
 
     # Set up basic logging
@@ -315,6 +381,12 @@ lm-dpl --verbose fetch --layer soil OR       # Fetch with verbose logging
     elif args.command == "import-file":
         return run_import_file(
             args.file_path, args.table_name, None, srid=args.srid, t_srid=args.t_srid
+        )
+    elif args.command == "test-endpoints":
+        return run_test_endpoints(
+            state=args.state,
+            timeout=args.timeout,
+            config_path=args.config,
         )
     else:
         # This should not happen due to required=True on subparsers
