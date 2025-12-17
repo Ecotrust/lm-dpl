@@ -25,4 +25,9 @@ JOIN s_oregon_plss2 b
 WHERE
     ST_Intersects(a.geom, b.geom) AND 
     ST_Dimension(ST_Intersection(a.geom, b.geom)) = 2;
+
+-- Fix invalid geometries
+UPDATE s_oregon_plss
+SET geom = ST_Multi(ST_CollectionExtract(ST_MakeValid(geom), 3))
+WHERE NOT ST_IsValid(geom);
 COMMIT;

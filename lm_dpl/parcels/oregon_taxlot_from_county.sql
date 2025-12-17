@@ -132,8 +132,12 @@ LEFT JOIN s_oregon_county_fips_mapping m
     ON t.county = m.county 
 WHERE m.county_name in ('Linn', 'Malheur', 'Jefferson', 'Gilliam', 'Sherman', 'Grant');
 
--- Remove duplicate records
+-- Fix geoms and remove duplicate records
 BEGIN;
+
+UPDATE s_oregon_taxlots_post
+SET geom = ST_Multi(ST_CollectionExtract(ST_MakeValid(geom), 3))
+WHERE NOT ST_IsValid(geom);
 
 WITH duplicated AS (
     SELECT

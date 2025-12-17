@@ -1,8 +1,4 @@
 BEGIN;
-UPDATE s_washington_taxlots
-SET geom = ST_MakeValid(geom)
-WHERE NOT ST_IsValid(geom);
-
 DROP TABLE IF EXISTS s_washington_taxlots_post;
 CREATE TABLE s_washington_taxlots_post (
     id BIGINT PRIMARY KEY,
@@ -61,5 +57,8 @@ UNION
 	FROM duplicated
 	WHERE
 	    row_num = 1
-);
+)
+UPDATE s_washington_taxlots
+SET geom = ST_Multi(ST_CollectionExtract(ST_MakeValid(geom), 3))
+WHERE NOT ST_IsValid(geom);
 COMMIT;
