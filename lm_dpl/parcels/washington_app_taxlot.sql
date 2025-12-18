@@ -38,8 +38,6 @@ DROP INDEX IF EXISTS s_washington_elevation_hash;
 CREATE INDEX s_washington_elevation_hash
     ON s_washington_elevation (geohash10);
 
--- Taxlot table
--- DROP TABLE IF EXISTS washington_app_taxlot CASCADE;
 CREATE TABLE IF NOT EXISTS washington_app_taxlot (
     id SERIAL PRIMARY KEY,
     odf_fpd VARCHAR(25) DEFAULT NULL,
@@ -52,64 +50,83 @@ CREATE TABLE IF NOT EXISTS washington_app_taxlot (
     legal_label VARCHAR(255) DEFAULT NULL,
     county VARCHAR(255) DEFAULT NULL,
     source VARCHAR(255) DEFAULT NULL,
-    map_id VARCHAR(255) DEFAULT NULL,
+    map_id VARCHAR(255) UNIQUE DEFAULT NULL,
     map_taxlot VARCHAR(255) UNIQUE DEFAULT NULL,
     geometry geometry(MULTIPOLYGON, 3857) DEFAULT NULL
 );
 
+DROP TABLE IF EXISTS washington_taxlots_temp;
+CREATE TABLE washington_taxlots_temp AS
+SELECT t.id, t.county, t.maptaxlot, t.landuse_cd, t.geohash10, e.min_elev, e.max_elev, t.geom
+FROM s_washington_taxlots_post t
+JOIN (
+	SELECT *
+	FROM s_washington_elevation
+	EXCEPT
+	SELECT e.*
+	FROM (
+		SELECT * FROM s_washington_elevation
+		WHERE total_pix > 0 AND 100*forest_pix/total_pix < 20 
+	) e
+	JOIN s_washington_taxlots_post t ON t.geohash10 = e.geohash10
+	JOIN s_washington_ppa p ON ST_Intersects(p.geom, t.geom)
+) e ON t.geohash10 = e.geohash10
+LEFT JOIN oregon_app_taxlot app
+ON t.maptaxlot = app.map_taxlot
+WHERE
+    app.map_id IS DISTINCT FROM t.geohash10 OR
+    app.min_elevation IS DISTINCT FROM e.min_elev OR
+    app.max_elevation IS DISTINCT FROM e.max_elev;
+
+CREATE INDEX IF NOT EXISTS washington_taxlots_temp_geom
+    ON washington_taxlots_temp 
+    USING GIST (geom);
+
+CREATE INDEX IF NOT EXISTS washington_taxlots_temp_hash
+    ON washington_taxlots_temp (geohash10);
+
+DROP INDEX IF EXISTS washington_app_taxlot_geometry_idx;
+DROP UNIQUE INDEX IF EXISTS washington_app_taxlot_pkey;
 
 -- Main query to join taxlots with various spatial datasets
 WITH
 -- 1. Watersheds: 
 huc_join AS (
     SELECT
-        t.id AS taxlot_id,
+        t.geohash10 AS taxlot_id,
         w.name AS watershed_name,
         w.huc12,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
             ORDER BY ST_Area(ST_Intersection(t.geom, w.geom)) DESC
         ) as rn
-    FROM s_washington_taxlots_post t
+    FROM washington_taxlots_temp t
     JOIN s_washington_huc w ON ST_Intersects(t.geom, w.geom)
 ),
 -- 2. PLSS: 
 plss_join AS (
     SELECT
-        t.id AS taxlot_id,
+        t.geohash10 AS taxlot_id,
         p.legal_desc_nm AS legal_desc,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
             ORDER BY ST_Area(ST_Intersection(t.geom, p.geom)) DESC
         ) as rn
-    FROM s_washington_taxlots_post t
+    FROM washington_taxlots_temp t
     JOIN s_washington_plss_tshp p ON ST_Intersects(t.geom, p.geom)
 ),
 -- 3. Fire Protection Districts: 
 fpd_join AS (
     SELECT
-        t.id AS taxlot_id,
+        t.geohash10 AS taxlot_id,
         -- truncating to match landmapper django model schema
         LEFT(REPLACE(f.fpd_desc, 'COUNTY', ''), 25) AS odf_fpd,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
             ORDER BY ST_Area(ST_Intersection(t.geom, f.geom)) DESC
         ) as rn
-    FROM s_washington_taxlots_post t
+    FROM washington_taxlots_temp t
     JOIN s_washington_fpd f ON ST_Intersects(t.geom, f.geom)
-),
--- 4. Elevation:
-elev_join AS (
-    SELECT *
-    FROM s_washington_elevation
-    EXCEPT
-    SELECT e.* 
-    FROM (
-        SELECT * FROM s_washington_elevation
-        WHERE 100*forest_pix/total_pix < 20
-    ) e
-    JOIN s_washington_taxlots_post t ON t.geohash10 = e.geohash10
-    JOIN s_washington_ppa p ON ST_Intersects(p.geom, t.geom)
 )
 -- Final insert into app_taxlots table
 INSERT INTO washington_app_taxlot (
@@ -130,28 +147,26 @@ INSERT INTO washington_app_taxlot (
 SELECT
     fpd.odf_fpd,
     NULL,
-    COALESCE(lu.descr, 'Undefined') AS orzdesc,
+    COALESCE(lu.descr, 'Not Defined') AS orzdesc,
     huc.huc12,
     NULL,
-    e.min_elev,
-    e.max_elev,
+    t.min_elev,
+    t.max_elev,
     plss.legal_desc,
     t.county,
     'WaTech and Washington State Counties',
     t.geohash10,
     t.maptaxlot,
     t.geom
-FROM s_washington_taxlots_post t
-JOIN elev_join e ON t.id = e.id
--- JOIN s_washington_cty cty ON t.fips_nr = CAST(cty.county_fipscode AS INTEGER)
+FROM washington_taxlots_temp t
 LEFT JOIN 
     (SELECT DISTINCT landuse_cd,descr FROM public.s_washington_landuse) lu ON t.landuse_cd = lu.landuse_cd
 LEFT JOIN
-    (SELECT * FROM huc_join WHERE rn = 1) huc ON t.id = huc.taxlot_id
+    (SELECT * FROM huc_join WHERE rn = 1) huc ON t.geohash10 = huc.taxlot_id
 LEFT JOIN
-    (SELECT * FROM plss_join WHERE rn = 1) plss ON t.id = plss.taxlot_id
+    (SELECT * FROM plss_join WHERE rn = 1) plss ON t.geohash10 = plss.taxlot_id
 LEFT JOIN
-    (SELECT * FROM fpd_join WHERE rn = 1) fpd ON t.id = fpd.taxlot_id
+    (SELECT * FROM fpd_join WHERE rn = 1) fpd ON t.geohash10 = fpd.taxlot_id
 ON CONFLICT (map_taxlot)
 DO UPDATE SET
     map_id = EXCLUDED.map_id,
