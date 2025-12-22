@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import IntegrityError, DatabaseError
+from sqlalchemy.exc import IntegrityError, DatabaseError, SQLAlchemyError
 from sqlalchemy.sql import text
 import geopandas as gpd
 from torchgeo.datasets import BoundingBox
@@ -64,7 +64,7 @@ class SumParcel(ZonalStatsBase):
             zones: Zone data array (unused in this implementation).
 
         Returns:
-            Tuple containing (parcel_id, geohash10, min_elevation, max_elevation, forest_pix, total_pix, area_sqm).
+            Tuple containing (parcel_id, geohash11, min_elevation, max_elevation, forest_pix, total_pix, area_sqm).
 
         Note:
             Elevation values are converted to integers. NaN values are ignored
@@ -90,8 +90,8 @@ class SumParcel(ZonalStatsBase):
         total_pix = sum(counts)
 
         return (
-            row.id.item(),
-            row.geohash10,
+            row.maptaxlot,
+            row.geohash11,
             min_elev,
             max_elev,
             forest_pix,
@@ -143,8 +143,8 @@ def main(state: str) -> None:
         q_create_table = f"""
             CREATE TABLE IF NOT EXISTS public.s_{state}_elevation
             (
-                id BIGINT,
-                geohash10 VARCHAR(10) UNIQUE,
+                maptaxlot VARCHAR(25) PRIMARY KEY,
+                geohash11 VARCHAR(11),
                 min_elev INTEGER,
                 max_elev INTEGER,
                 forest_pix INTEGER,
@@ -157,7 +157,7 @@ def main(state: str) -> None:
 
         # Use parameterized query with constants
         query = f"""
-            SELECT id, geohash10, geom as geometry, area_sqm
+            SELECT maptaxlot, geohash11, geom as geometry, area_sqm
             FROM s_{state}_taxlots_post
             WHERE area_sqm > {MIN_AREA_THRESHOLD} 
                 -- AND objectid NOT IN (1618482, 1618481) 
@@ -165,10 +165,10 @@ def main(state: str) -> None:
 
             EXCEPT 
             
-            SELECT t.id, t.geohash10, geom as geometry, t.area_sqm
+            SELECT t.maptaxlot, t.geohash11, geom as geometry, t.area_sqm
             FROM s_{state}_taxlots_post t
-            JOIN s_{state}_elevation e ON t.geohash10 = e.geohash10
-            -- LIMIT 10000;
+            JOIN s_{state}_elevation e ON t.maptaxlot = e.maptaxlot
+            -- LIMIT 1000;
         """
 
         with engine.begin() as conn:
@@ -235,8 +235,8 @@ def main(state: str) -> None:
                     df = pd.DataFrame(
                         valid_data_rows,
                         columns=[
-                            "id",
-                            "geohash10",
+                            "maptaxlot",
+                            "geohash11",
                             "min_elev",
                             "max_elev",
                             "forest_pix",
@@ -245,82 +245,77 @@ def main(state: str) -> None:
                         ],
                     )
 
-                    # Data validation checks
-                    invalid_rows = []
-                    for idx, row in df.iterrows():
-                        # Validate required fields
-                        if pd.isna(row["id"]) or pd.isna(row["geohash10"]):
-                            invalid_rows.append(idx)
-                            continue
+                    # # Data validation checks
+                    # invalid_rows = []
+                    # for idx, row in df.iterrows():
+                    #     # Validate required fields
+                    #     if pd.isna(row["id"]) or pd.isna(row["geohash11"]):
+                    #         invalid_rows.append(idx)
+                    #         continue
 
-                        # Validate geohash format (basic check)
-                        if (
-                            not isinstance(row["geohash10"], str)
-                            or len(row["geohash10"]) != 10
-                        ):
-                            invalid_rows.append(idx)
-                            continue
+                    #     # Validate geohash format (basic check)
+                    #     if (
+                    #         not isinstance(row["geohash11"], str)
+                    #         or len(row["geohash11"]) != 11
+                    #     ):
+                    #         invalid_rows.append(idx)
+                    #         continue
 
-                        # Validate elevation values
-                        if (
-                            not isinstance(row["min_elev"], (int, float))
-                            or not isinstance(row["max_elev"], (int, float))
-                            or row["min_elev"] > row["max_elev"]
-                        ):
-                            invalid_rows.append(idx)
-                            continue
+                    #     # Validate elevation values
+                    #     if (
+                    #         not isinstance(row["min_elev"], (int, float))
+                    #         or not isinstance(row["max_elev"], (int, float))
+                    #         or row["min_elev"] > row["max_elev"]
+                    #     ):
+                    #         invalid_rows.append(idx)
+                    #         continue
 
-                    # Remove invalid rows
-                    if invalid_rows:
-                        df = df.drop(invalid_rows)
-                        logger.warning(
-                            f"Removed {len(invalid_rows)} invalid records in chunk {chunk_count}"
-                        )
-                        total_failed += len(invalid_rows)
+                    # # Remove invalid rows
+                    # if invalid_rows:
+                    #     df = df.drop(invalid_rows)
+                    #     logger.warning(
+                    #         f"Removed {len(invalid_rows)} invalid records in chunk {chunk_count}"
+                    #     )
+                    #     total_failed += len(invalid_rows)
 
-                    if df.empty:
-                        logger.warning(
-                            f"No valid data remaining in chunk {chunk_count} after validation"
-                        )
-                        continue
+                    # if df.empty:
+                    #     logger.warning(
+                    #         f"No valid data remaining in chunk {chunk_count} after validation"
+                    #     )
+                    #     continue
+
+                    # Convert to list of dicts for batch execution
+                    data_rows_dicts = df.to_dict("records")
+
+                    upsert_sql = f"""
+                        INSERT INTO public.s_{state}_elevation 
+                        (maptaxlot, geohash11, min_elev, max_elev, forest_pix, total_pix, area_sqm)
+                        VALUES (:maptaxlot, :geohash11, :min_elev, :max_elev, :forest_pix, :total_pix, :area_sqm)
+                        ON CONFLICT (maptaxlot) DO UPDATE SET
+                            min_elev = EXCLUDED.min_elev,
+                            max_elev = EXCLUDED.max_elev,
+                            forest_pix = EXCLUDED.forest_pix,
+                            total_pix = EXCLUDED.total_pix,
+                            area_sqm = EXCLUDED.area_sqm;
+                    """
 
                     try:
-                        df.to_sql(
-                            f"s_{state}_elevation",
-                            engine,
-                            if_exists="append",
-                            index=False,
-                            method="multi",
-                            chunksize=1000,
+                        # Process in batches to manage memory and transaction size
+                        batch_size = 1000
+                        with engine.begin() as conn:
+                            for i in range(0, len(data_rows_dicts), batch_size):
+                                batch = data_rows_dicts[i : i + batch_size]
+                                conn.execute(text(upsert_sql), batch)
+
+                        total_processed += len(valid_data_rows)
+                        logger.info(
+                            f"Processed {len(valid_data_rows)} features in chunk {chunk_count}"
                         )
-                    except IntegrityError as e:
-                        logger.error(f"Duplicate key violation in chunk {chunk_count}")
-                        # Fallback insertion strategy
-                        for _, row in df.iterrows():
-                            try:
-                                row.to_frame().T.to_sql(
-                                    f"s_{state}_elevation",
-                                    engine,
-                                    if_exists="append",
-                                    index=False,
-                                )
-                            except IntegrityError:
-                                logger.warning(
-                                    f"Skipping duplicate record: {row['id']}"
-                                )
-                                total_failed += 1
-                                continue
-                    except DatabaseError as e:
+
+                    except SQLAlchemyError as e:
                         logger.error(f"Database error in chunk {chunk_count}: {e}")
-                        conn.rollback()
                         total_failed += len(valid_data_rows)
                         continue
-                    else:
-                        conn.commit()
-                    total_processed += len(valid_data_rows)
-                    logger.info(
-                        f"Processed {len(valid_data_rows)} features in chunk {chunk_count}"
-                    )
                 else:
                     logger.warning(f"No valid data processed in chunk {chunk_count}")
 
@@ -342,4 +337,4 @@ def main(state: str) -> None:
 
 
 if __name__ == "__main__":
-    main("washington")
+    main("oregon")
