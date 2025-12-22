@@ -16,7 +16,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from sqlalchemy import create_engine
-from sqlalchemy.exc import IntegrityError, DatabaseError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.sql import text
 import geopandas as gpd
 from torchgeo.datasets import BoundingBox
@@ -155,19 +155,21 @@ def main(state: str) -> None:
             DROP INDEX IF EXISTS s_{state}_elevation_hash;
         """
 
-        # Use parameterized query with constants
+        # Select new taxlots or taxlots with changed geometry
         query = f"""
             SELECT maptaxlot, geohash11, geom as geometry, area_sqm
             FROM s_{state}_taxlots_post
-            WHERE area_sqm > {MIN_AREA_THRESHOLD} 
-                -- AND objectid NOT IN (1618482, 1618481) 
+            WHERE area_sqm > {MIN_AREA_THRESHOLD}
+                -- AND objectid NOT IN (1618482, 1618481)
                 -- AND county_nm = 'Lincoln'
 
             EXCEPT 
             
-            SELECT t.maptaxlot, t.geohash11, geom as geometry, t.area_sqm
+            SELECT t.maptaxlot, t.geohash11, t.geom as geometry, t.area_sqm
             FROM s_{state}_taxlots_post t
-            JOIN s_{state}_elevation e ON t.maptaxlot = e.maptaxlot
+            JOIN s_{state}_elevation e 
+                ON t.maptaxlot = e.maptaxlot 
+                AND t.geohash11 = e.geohash11
             -- LIMIT 1000;
         """
 
@@ -244,45 +246,6 @@ def main(state: str) -> None:
                             "area_sqm",
                         ],
                     )
-
-                    # # Data validation checks
-                    # invalid_rows = []
-                    # for idx, row in df.iterrows():
-                    #     # Validate required fields
-                    #     if pd.isna(row["id"]) or pd.isna(row["geohash11"]):
-                    #         invalid_rows.append(idx)
-                    #         continue
-
-                    #     # Validate geohash format (basic check)
-                    #     if (
-                    #         not isinstance(row["geohash11"], str)
-                    #         or len(row["geohash11"]) != 11
-                    #     ):
-                    #         invalid_rows.append(idx)
-                    #         continue
-
-                    #     # Validate elevation values
-                    #     if (
-                    #         not isinstance(row["min_elev"], (int, float))
-                    #         or not isinstance(row["max_elev"], (int, float))
-                    #         or row["min_elev"] > row["max_elev"]
-                    #     ):
-                    #         invalid_rows.append(idx)
-                    #         continue
-
-                    # # Remove invalid rows
-                    # if invalid_rows:
-                    #     df = df.drop(invalid_rows)
-                    #     logger.warning(
-                    #         f"Removed {len(invalid_rows)} invalid records in chunk {chunk_count}"
-                    #     )
-                    #     total_failed += len(invalid_rows)
-
-                    # if df.empty:
-                    #     logger.warning(
-                    #         f"No valid data remaining in chunk {chunk_count} after validation"
-                    #     )
-                    #     continue
 
                     # Convert to list of dicts for batch execution
                     data_rows_dicts = df.to_dict("records")
