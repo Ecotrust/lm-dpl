@@ -20,7 +20,7 @@
  Final insert
 
 - Calculates standardized area measurements in square meters using EPSG:5070 projection
-- Generates geohash10 values for spatial indexing using EPSG:4326
+- Generates geohash11 values for spatial indexing using EPSG:4326
 - For remaining duplicates, appends a geohash suffix to the maptaxlot code.
 */
 BEGIN;
@@ -36,13 +36,38 @@ CREATE TABLE s_oregon_taxlots_post (
 );
 
 DROP TABLE IF EXISTS consolidated_taxlots;
-CREATE TABLE  consolidated_taxlots AS
-SELECT county_name as county, TRIM(maptaxlot) AS maptaxlot, ST_Area(ST_Transform(geom, 5070)) AS area_sqm, geom 
+CREATE TABLE consolidated_taxlots AS
+WITH 
+area_per AS (
+    SELECT 
+        id,
+        ST_Perimeter(ST_Transform(geom, 5070)) AS perimeter,
+        ST_Area(ST_Transform(geom, 5070)) AS area
+    FROM s_oregon_taxlots
+),
+excluded_ids AS (
+    SELECT t.id
+    FROM s_oregon_taxlots t
+    JOIN area_per p ON t.id = p.id 
+    WHERE 
+        maptaxlot ~* '(ROAD|WATER|RAIL|NONTL|CANAL|RIVER|GAP|RR|WTR|STR|R\/R)' 
+        OR (
+            (NULLIF(TRIM(maptaxlot), '') IS NULL OR TRIM(maptaxlot) = '0')
+            AND 4 * area / POWER(perimeter, 2) < 0.02 
+        )
+)
+SELECT 
+    county, 
+    COALESCE(
+        NULLIF(TRIM(maptaxlot), ''), 
+        t.county_fips || '_' || ST_GeoHash(ST_Transform(t.geom, 4326), 11)
+    ) AS maptaxlot, 
+    ST_Area(ST_Transform(geom, 5070)) AS area_sqm,
+    ST_Perimeter(ST_Transform(geom, 5070)) AS perimeter, 
+    ST_GeoHash(ST_Transform(t.geom, 4326), 11) AS geohash11,
+    geom
 FROM s_oregon_taxlots t
-JOIN s_oregon_county_fips_mapping m
-    ON t.county = m.county_name 
-WHERE NULLIF(TRIM(maptaxlot), '') IS NOT NULL
-    AND maptaxlot !~* '(ROAD|WATER|RAIL|NONTL|CANAL|RIVER|GAP|RR|WTR|STR|ISLAND|R\/R)';
+WHERE NOT EXISTS (SELECT 1 FROM excluded_ids e WHERE e.id = t.id);
 
 -- Fix geoms 
 UPDATE consolidated_taxlots
@@ -60,6 +85,8 @@ SELECT
     t.county, 
     t.maptaxlot, 
     area_sqm,
+    perimeter,
+    geohash11,
     geom AS geom
 FROM consolidated_taxlots t
 JOIN (
@@ -77,7 +104,7 @@ WITH dups AS (
         SELECT
             *,
             ROW_NUMBER() OVER (
-                PARTITION BY ST_GeoHash(ST_Transform(geom, 4326), 11)  
+                PARTITION BY geohash11  
                 ORDER BY maptaxlot
             ) AS row_num
         FROM unique_taxlots
@@ -86,6 +113,11 @@ WITH dups AS (
 )
 DELETE FROM unique_taxlots 
 WHERE maptaxlot IN (SELECT * FROM dups);
+
+-- Remove skinny taxlots (roads, rivers)
+DELETE FROM unique_taxlots
+WHERE 4 * area_sqm / POWER(perimeter, 2) < 0.03;
+
 
 -- Get duplicated taxlots
 DROP TABLE IF EXISTS duplicated_taxlots;
@@ -105,7 +137,7 @@ JOIN (
             SELECT
                 *,
                 ROW_NUMBER() OVER (
-                    PARTITION BY county, maptaxlot 
+                    PARTITION BY maptaxlot 
                     ORDER BY maptaxlot, county
                 ) AS row_num
             FROM consolidated_taxlots
@@ -139,7 +171,7 @@ SELECT
     b.county, 
     a.maptaxlot, 
     ST_Area(ST_Transform(a.geom, 5070)) AS area_sqm, 
-    ST_GeoHash(ST_Transform(a.geom, 4326), 11) AS geohash10, 
+    ST_GeoHash(ST_Transform(a.geom, 4326), 11) AS geohash11, 
     a.geom 
 FROM (
     SELECT 
@@ -150,84 +182,91 @@ FROM (
     GROUP BY maptaxlot, cid
 ) a
 JOIN (
-    SELECT DISTINCT ON (maptaxlot) 
+    SELECT DISTINCT ON (maptaxlot, cid) 
         county, 
         maptaxlot, 
         cid
     FROM merged_clusters 
-    ORDER BY maptaxlot, area_sqm DESC
-) b ON a.maptaxlot = b.maptaxlot;
+    ORDER BY maptaxlot, cid, area_sqm DESC
+) b ON a.maptaxlot = b.maptaxlot AND a.cid = b.cid;
 
 -- Get duplicated taxlots that were not merged
-DROP TABLE IF EXISTS merged_taxlots_dups_counties;
-CREATE TABLE merged_taxlots_dups_counties AS
-WITH duplicated AS (
-    SELECT
-        *,
-        ROW_NUMBER() OVER (
-            PARTITION BY maptaxlot
-            ORDER BY maptaxlot, area_sqm DESC
-        ) AS row_num
-    FROM (
-        SELECT a.*
-        FROM merged_clusters a
-        JOIN merged_clusters b
-            ON a.maptaxlot = b.maptaxlot 
-            AND a.county <> b.county
-    )
-)
-SELECT 
-    county, 
-    maptaxlot, 
-    area_sqm, 
-    geom 
-FROM duplicated
-WHERE row_num = 1;
+-- DROP TABLE IF EXISTS merged_taxlots_dups_counties;
+-- CREATE TABLE merged_taxlots_dups_counties AS
+-- WITH duplicated AS (
+--     SELECT
+--         *,
+--         ROW_NUMBER() OVER (
+--             PARTITION BY maptaxlot
+--             ORDER BY maptaxlot, area_sqm DESC
+--         ) AS row_num
+--     FROM (
+--         SELECT a.*
+--         FROM merged_clusters a
+--         JOIN merged_clusters b
+--             ON a.maptaxlot = b.maptaxlot 
+--             AND a.county <> b.county
+--     )
+-- )
+-- SELECT 
+--     county, 
+--     maptaxlot, 
+--     area_sqm, 
+--     geom 
+-- FROM duplicated
+-- WHERE row_num = 1;
 
--- Insert deduplicated taxlots into final table (~6k records as of 2025-12)
-INSERT INTO s_oregon_taxlots_post (county, maptaxlot, area_sqm, geohash10, geom)
+-- Insert deduplicated taxlo -- UNION ALL
+    
+    -- SELECT 
+    --     county, maptaxlot, 
+    --     area_sqm,
+    --     ST_GeoHash(ST_Transform(geom, 4326), 11) AS geohash11, geom
+    -- FROM merged_tats into final table (~6k records as of 2025-12)
+INSERT INTO s_oregon_taxlots_post (county, maptaxlot, area_sqm, geohash11, geom)
 SELECT * FROM (
     SELECT 
         county, maptaxlot, area_sqm, 
-        ST_GeoHash(ST_Transform(geom, 4326), 11) AS geohash10, geom
+        ST_GeoHash(ST_Transform(geom, 4326), 11) AS geohash11, geom
     FROM unique_taxlots
     
-    UNION ALL
+    -- UNION ALL
     
-    SELECT 
-        county, maptaxlot, 
-        area_sqm,
-        ST_GeoHash(ST_Transform(geom, 4326), 11) AS geohash10, geom
-    FROM merged_taxlots_dups_counties
+    -- SELECT 
+    --     county, maptaxlot, 
+    --     area_sqm,
+    --     ST_GeoHash(ST_Transform(geom, 4326), 11) AS geohash11, geom
+    -- FROM merged_taxlots_dups_counties
 
     UNION ALL
 
-    SELECT 
+    SELECT
         county, 
         -- Rename remaining duplicates by appending geohash suffix (~111 records as of 2025-12)
         CASE 
             WHEN COUNT(*) OVER (PARTITION BY maptaxlot) > 1 
-            THEN maptaxlot || '_' || UPPER(ST_GeoHash(ST_Transform(ST_Centroid(geom), 4326), 6))
+            THEN maptaxlot || '_' || UPPER(ST_GeoHash(ST_Transform(ST_Centroid(geom), 4326), 11))
             ELSE maptaxlot 
         END AS maptaxlot,
         area_sqm,
-        geohash10, 
+        geohash11, 
         geom
     FROM merged_clusters_round2
-    WHERE maptaxlot NOT IN (SELECT maptaxlot FROM merged_taxlots_dups_counties)
-
+    --WHERE maptaxlot NOT IN (SELECT maptaxlot FROM merged_taxlots_dups_counties)
 ) AS final_set
 ON CONFLICT (maptaxlot) DO NOTHING;
 
 
 -- Report results
+DROP TABLE IF EXISTS report_oregon_taxlots;
+CREATE TABLE report_oregon_taxlots AS
 SELECT 
-    'Total unprocessed taxlots' AS metric_name,
-    (SELECT COUNT(*) FROM s_oregon_taxlots) AS metric_count
+    'Total unprocessed taxlots' AS report,
+    (SELECT COUNT(*) FROM s_oregon_taxlots) AS count
 UNION ALL
 SELECT 
-    'Cleaned taxlots' AS metric_name,
-    (SELECT COUNT(*) FROM consolidated_taxlots) AS metric_count
+    'Cleaned taxlots',
+    (SELECT COUNT(*) FROM consolidated_taxlots)
 UNION ALL
 SELECT 
     'Unique taxlots',
@@ -252,31 +291,22 @@ UNION ALL
 SELECT 
     'Remaining duplicated geohash11 values',
     (SELECT COUNT(*) 
-    FROM (
-        SELECT
-            *,
-            ROW_NUMBER() OVER (
-                PARTITION BY geohash10 
-                ORDER BY geohash10             
-            ) AS row_num
-        FROM s_oregon_taxlots_post
-    ) 
-    WHERE row_num > 1)
+     FROM (
+         SELECT geohash11,
+                ROW_NUMBER() OVER (PARTITION BY geohash11 ORDER BY geohash11) AS row_num
+         FROM s_oregon_taxlots_post
+     ) t
+     WHERE row_num > 1)
 UNION ALL
 SELECT 
     'Remaining duplicated maptaxlot values',
     (SELECT COUNT(*) 
-        FROM (
-            SELECT
-                *,
-                ROW_NUMBER() OVER (
-                    PARTITION BY maptaxlot 
-                    ORDER BY maptaxlot 
-                ) AS row_num
-            FROM s_oregon_taxlots_post
-        ) 
-    WHERE row_num > 1
-    );
+     FROM (
+         SELECT maptaxlot,
+                ROW_NUMBER() OVER (PARTITION BY maptaxlot ORDER BY maptaxlot) AS row_num
+         FROM s_oregon_taxlots_post
+     ) t
+     WHERE row_num > 1);
 
 
 -- Clean up after yourself
@@ -285,12 +315,10 @@ DROP TABLE IF EXISTS unique_taxlots;
 DROP TABLE IF EXISTS duplicated_taxlots;
 DROP TABLE IF EXISTS merged_clusters;
 DROP TABLE IF EXISTS merged_clusters_round2;
+DROP TABLE IF EXISTS merged_taxlots_dups_counties;
+
+SELECT * FROM report_oregon_taxlots;
 
 COMMIT;
--- END;
 
-/* Test why these taxlots are missing after deduplication
-select * from merged_taxlots
-where maptaxlot in ('07190000-02400', '082436DA-02300', '082436AC-00300', '082436AA-02800', '08250000-01300', '08190000-00900')
-order by maptaxlot
-*/
+-- END;
