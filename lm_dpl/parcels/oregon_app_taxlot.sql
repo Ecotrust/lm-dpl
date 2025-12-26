@@ -65,16 +65,19 @@ JOIN (
 	SELECT *
 	FROM s_oregon_elevation
 	EXCEPT
+    -- Exclude small taxlots and taxlots with low forest cover within PPAs
 	SELECT e.*
-	FROM (
-		SELECT * FROM s_oregon_elevation
-		WHERE total_pix > 0 AND 100*forest_pix/total_pix < 20 
-	) e
-	JOIN s_oregon_taxlots_post t ON t.geohash11 = e.geohash11
-	JOIN s_oregon_ppa p ON ST_Intersects(p.geom, t.geom)
-) e ON t.maptaxlot = e.maptaxlot
+	FROM s_oregon_elevation e
+	JOIN s_oregon_taxlots_post t 
+		ON t.maptaxlot = e.maptaxlot
+	JOIN s_oregon_ppa p
+		ON ST_Intersects(t.geom, p.geom)
+	WHERE t.area_sqm < 2024
+		OR (e.forest_pix/CAST(e.total_pix AS FLOAT) < 0.20) 
+) e 
+    ON t.maptaxlot = e.maptaxlot
 LEFT JOIN oregon_app_taxlot app
-ON t.maptaxlot = app.map_taxlot
+    ON t.maptaxlot = app.map_taxlot
 WHERE
     app.map_id IS DISTINCT FROM t.geohash11 OR
     app.min_elevation IS DISTINCT FROM e.min_elev OR
@@ -93,7 +96,7 @@ WITH
 -- 1. Watersheds: 
 huc_join AS (
     SELECT
-        t.maptaxlot AS taxlot_id,
+        t.id AS taxlot_id,
         w.name AS watershed_name,
         w.huc12,
         ROW_NUMBER() OVER (
@@ -106,7 +109,7 @@ huc_join AS (
 -- 2. PLSS: 
 plss_join AS (
     SELECT
-        t.maptaxlot AS taxlot_id,
+        t.id AS taxlot_id,
         p.legal_desc,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
@@ -118,7 +121,7 @@ plss_join AS (
 -- 3. Forest Protection Districts: 
 fpd_join AS (
     SELECT
-        t.maptaxlot AS taxlot_id,
+        t.id AS taxlot_id,
         f.odf_fpd,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
@@ -130,7 +133,7 @@ fpd_join AS (
 -- 4. Structural Fire Districts: 
 sfd_join AS (
     SELECT
-        t.maptaxlot AS taxlot_id,
+        t.id AS taxlot_id,
         s.agency_name AS agency,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
@@ -142,7 +145,7 @@ sfd_join AS (
 -- 5. Zoning
 zoning_join AS (
     SELECT
-        t.maptaxlot AS taxlot_id,
+        t.id AS taxlot_id,
         z.orzdesc,
         ROW_NUMBER() OVER (
             PARTITION BY t.id
@@ -185,15 +188,15 @@ FROM oregon_taxlots_temp t
 -- JOIN elev_join e ON t.geohash11 = e.geohash11
 -- JOIN s_oregon_county_fips_mapping cty ON t.county = cty.county
 LEFT JOIN
-    (SELECT * FROM huc_join WHERE rn = 1) huc ON t.maptaxlot = huc.taxlot_id
+    (SELECT * FROM huc_join WHERE rn = 1) huc ON t.id = huc.taxlot_id
 LEFT JOIN
-    (SELECT * FROM plss_join WHERE rn = 1) plss ON t.maptaxlot = plss.taxlot_id
+    (SELECT * FROM plss_join WHERE rn = 1) plss ON t.id = plss.taxlot_id
 LEFT JOIN
-    (SELECT * FROM fpd_join WHERE rn = 1) fpd ON t.maptaxlot = fpd.taxlot_id
+    (SELECT * FROM fpd_join WHERE rn = 1) fpd ON t.id = fpd.taxlot_id
 LEFT JOIN
-    (SELECT * FROM sfd_join WHERE rn = 1) sfd ON t.maptaxlot = sfd.taxlot_id
+    (SELECT * FROM sfd_join WHERE rn = 1) sfd ON t.id = sfd.taxlot_id
 LEFT JOIN
-    (SELECT * FROM zoning_join WHERE rn = 1) zn ON t.maptaxlot = zn.taxlot_id
+    (SELECT * FROM zoning_join WHERE rn = 1) zn ON t.id = zn.taxlot_id
 ON CONFLICT (map_taxlot)
 DO UPDATE SET
     map_id = EXCLUDED.map_id,
@@ -207,9 +210,22 @@ WHERE
     oregon_app_taxlot.min_elevation IS DISTINCT FROM EXCLUDED.min_elevation OR
     oregon_app_taxlot.max_elevation IS DISTINCT FROM EXCLUDED.max_elevation OR
     oregon_app_taxlot.legal_label IS DISTINCT FROM EXCLUDED.legal_label;
-COMMIT;
+
+-- Remove taxlots from oregon_app_taxlot that are no longer present in s_oregon_taxlots_post
+WITH 
+to_delete AS ( 
+    SELECT * FROM oregon_app_taxlot
+    EXCEPT
+    SELECT app.* FROM oregon_app_taxlot app
+    INNER JOIN s_oregon_taxlots_post post 
+        ON app.map_taxlot = post.maptaxlot
+)
+DELETE FROM oregon_app_taxlot
+WHERE map_taxlot IN (SELECT DISTINCT map_taxlot FROM to_delete);
 
 DROP TABLE IF EXISTS oregon_taxlots_temp;
+
+COMMIT;
 
 -- Create indexes on oregon_app_taxlot
 -- CREATE INDEX oregon_app_taxlot_geometry_idx 
