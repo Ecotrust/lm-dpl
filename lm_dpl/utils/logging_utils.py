@@ -37,17 +37,30 @@ def setup_project_logging():
     log_path = config.LOG_PATH
 
     timestamp = datetime.now().strftime("%Y%m%d")
+    
+    # Handle log path with proper variable expansion and fallback
     if log_path:
+        # Expand environment variables including nested ones like ${PROJDIR}
         log_dir = os.path.expandvars(log_path)
-        if not os.path.isabs(log_dir):
-            log_dir = os.path.abspath(log_dir)
+        log_dir = os.path.abspath(log_dir)
         log_file = os.path.join(log_dir, f"lm_dpl_{timestamp}.log")
     else:
-        log_file = f"lm_dpl_{timestamp}.log"
-
+        # Default to relative logs directory
+        log_dir = "logs"
+        log_file = os.path.join(log_dir, f"lm_dpl_{timestamp}.log")
+    
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+        except (PermissionError, OSError) as e:
+            # Fall back to relative logs directory if configured path fails
+            log_file = os.path.join("logs", f"lm_dpl_{timestamp}.log")
+            log_dir = os.path.dirname(log_file)
+            os.makedirs(log_dir, exist_ok=True)
+            # Log warning about fallback
+            print(f"Warning: Could not create log directory at configured path: {e}")
+            print(f"Falling back to: {log_file}")
 
     logging.basicConfig(
         level=logging.INFO,

@@ -6,6 +6,7 @@ Reads endpoint configurations from YAML files, fetches data using the REST clien
 and inserts data into PostGIS database.
 """
 
+import os
 import json
 from typing import Dict, Any
 
@@ -16,15 +17,18 @@ from ..utils import get_config, import_layer, get_project_logger
 class ParcelProcessor:
     """Class to process parcel data from REST endpoints into PostGIS database."""
 
-    def __init__(self, state: str):
+    epsg: int = 3857  # Default EPSG code for geometry columns
+
+    def __init__(self, state: str, config_path: str = None):
         """Initialize the processor for a specific state.
 
         Args:
             state: State name ('oregon' or 'washington')
+            config_path: Optional path to custom endpoints configuration file
         """
         self.logger = get_project_logger(__name__)
         self.state = state.lower()
-        self.rest_client = LandmapperRESTClient()
+        self.rest_client = LandmapperRESTClient(config_path=config_path)
         self.config = get_config()
 
         # Get database credentials from config
@@ -35,7 +39,9 @@ class ParcelProcessor:
         if self.state_services is None:
             raise ValueError(f"State '{state}' not found in REST client configuration")
 
-    def _create_table(self, service_name: str, service_info: Dict[str, Any]) -> None:
+    def _create_table(
+        self, service_name: str, service_info: Dict[str, Any], overwrite: bool = False
+    ) -> None:
         """Create a PostGIS table for a service if it doesn't exist.
 
         Args:
@@ -61,9 +67,8 @@ class ParcelProcessor:
             epsg = service_info.get("epsg", 4326)
             columns_def.append(f"geom GEOMETRY(GEOMETRY, {epsg})")
 
-        # Create table SQL
+        drop_table_sql = f"DROP TABLE IF EXISTS {table_name};"
         create_table_sql = f"""
-            DROP TABLE IF EXISTS {table_name};
             CREATE TABLE {table_name} (
                 id SERIAL PRIMARY KEY,
                 {', '.join(columns_def)}
@@ -71,9 +76,11 @@ class ParcelProcessor:
         """
 
         with DatabaseManager(self.db_credentials) as db:
+            if overwrite:
+                db.execute(drop_table_sql)
             db.execute(create_table_sql)
 
-    def process_service(self, service_name: str) -> None:
+    def process_service(self, service_name: str, overwrite: bool = False) -> None:
         """Process a single service: fetch data and insert into database.
 
         Args:
@@ -93,19 +100,19 @@ class ParcelProcessor:
             self.logger.info(f"Skipping service '{service_name}' (fetch: false)")
             return
 
-        # Create table
-        self._create_table(service_name, service_info)
-
         # Get fetcher for this service
         fetcher = getattr(self.state_services, service_name, None)
         if not fetcher:
             self.logger.warning(f"Fetcher not available for service '{service_name}'")
             return
 
+        # Create table
+        self._create_table(service_name, service_info, overwrite=overwrite)
+
         try:
             self.logger.info(f"Fetching data for {service_name}")
             batch_size = service_info.get("max_records", 2000)
-            data = fetcher.fetch_data(batch_size=batch_size)
+            data = fetcher.fetch_data(batch_size=batch_size, epsg=self.epsg)
 
             if not data or "features" not in data or not data["features"]:
                 self.logger.warning(f"No data returned for service '{service_name}'")
@@ -150,6 +157,18 @@ class ParcelProcessor:
                 self.logger.info(
                     f"Successfully processed {len(data_rows)} records for {service_name}"
                 )
+                # Add post-procesing SQL script if available from config
+                post_script = service_info.get("post_script")
+                if post_script:
+                    if os.path.exists(post_script):
+                        self.logger.info(
+                            f"Running post-processing SQL script: {post_script}"
+                        )
+                        with DatabaseManager(self.db_credentials) as db:
+                            db.execute_from_file(post_script)
+                        self.logger.info(f"Successfully processed {post_script}")
+                    else:
+                        self.logger.warning(f"No post-processing SQL script found")
             else:
                 self.logger.warning(f"No valid data to insert for {service_name}")
 
@@ -157,8 +176,12 @@ class ParcelProcessor:
             self.logger.error(f"Failed to process service '{service_name}': {e}")
             raise
 
-    def run(self) -> None:
-        """Run the complete processing pipeline for all services in the state."""
+    def fetch(self, overwrite: bool = False) -> None:
+        """Run the complete processing pipeline for all services in the state.
+
+        Args:
+            overwrite: If True, drop and recreate tables before processing
+        """
         self.logger.info(f"Starting parcel processor for state: {self.state}")
 
         # Get all services for the state
@@ -166,21 +189,72 @@ class ParcelProcessor:
 
         for service_name in services.keys():
             try:
-                self.process_service(service_name)
+                self.process_service(service_name, overwrite=overwrite)
             except Exception as e:
                 self.logger.error(f"Failed to process service '{service_name}': {e}")
                 continue
 
         self.logger.info(f"Completed parcel processing for state: {self.state}")
 
+    def process_app_taxlot(self) -> None:
+        """Process final 'app_taxlot'."""
+        sql_file = f"{self.state}_app_taxlot.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
 
-def main(state: str, config_path: str = None) -> None:
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_taxlot table for: {self.state}")
+        with DatabaseManager(self.db_credentials) as db:
+            db.execute_from_file(sql_path)
+        self.logger.info(f"Successfully processed app_taxlot table for: {self.state}")
+
+    def process_app_coa(self) -> None:
+        """Process final 'app_coa'."""
+        sql_file = f"{self.state}_app_coa.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
+
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_coa table for: {self.state}")
+        with DatabaseManager(self.db_credentials) as db:
+            db.execute_from_file(sql_path)
+        self.logger.info(f"Successfully processed app_coa table for: {self.state}")
+
+    def process_app_populationpoint(self) -> None:
+        """Process final 'app_populationpoint'."""
+        sql_file = f"{self.state}_app_populationpoint.sql"
+        sql_path = os.path.join(os.path.dirname(__file__), sql_file)
+
+        if not os.path.exists(sql_path):
+            self.logger.error(f"SQL script not found: {sql_path}")
+            raise FileNotFoundError(f"SQL script not found: {sql_file}")
+
+        self.logger.info(f"Processing app_populationpoint table for: {self.state}")
+        with DatabaseManager(self.db_credentials) as db:
+            db.execute_from_file(sql_path)
+        self.logger.info(
+            f"Successfully processed app_populationpoint table for: {self.state}"
+        )
+
+
+def main(
+    state: str,
+    config_path: str = None,
+    test_endpoints: bool = False,
+    overwrite: bool = False,
+) -> None:
     """
     Main entry point for parcel processing from CLI.
 
     Args:
         state: State name (e.g., 'oregon', 'washington')
         config_path: Optional path to configuration file (currently unused)
+        test_endpoints: Whether to test endpoints before processing
+        overwrite: If True, drop and recreate tables before processing
     """
     from ..utils.logging_utils import setup_project_logging
 
@@ -188,17 +262,14 @@ def main(state: str, config_path: str = None) -> None:
     logger.info(f"Starting parcel processing for state: {state}")
 
     try:
-        processor = ParcelProcessor(state)
-        processor.run()
+        processor = ParcelProcessor(state, config_path=config_path)
+        if test_endpoints:
+            processor.test_endpoints(state=state)
+        processor.fetch(overwrite=overwrite)
+        processor.process_app_taxlot()
+        processor.process_app_coa()
+        processor.process_app_populationpoint()
         logger.info(f"Completed parcel processing for state: {state}")
     except Exception as e:
         logger.error(f"Error during parcel processing for state {state}: {e}")
         raise
-
-
-if __name__ == "__main__":
-    # Example usage
-    import json
-
-    processor = ParcelProcessor("oregon")
-    processor.process_service("zonning")

@@ -11,7 +11,13 @@ import sys
 import psycopg2
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional, Literal
+
 from .logging_utils import get_project_logger
+
+try:
+    from osgeo import ogr
+except ImportError:
+    pass  # GDAL is optional; handle import errors where needed
 
 
 # Initialize module logger
@@ -27,6 +33,7 @@ def worker_insert(
     property_keys,
     has_geometry=True,
     geom_type: Literal["wkt", "geojson"] = "wkt",
+    t_srid: Optional[int] = None,
 ):
     """
     Worker function to insert a chunk of data into a PostgreSQL/PostGIS table.
@@ -41,6 +48,7 @@ def worker_insert(
         property_keys: List of keys to access values from the data
         has_geometry: Boolean indicating whether the data contains geometry (default: True)
         geom_type: Type of geometry format - 'wkt' or 'geojson' (default: 'wkt')
+        t_srid: Optional target Spatial Reference System Identifier for reprojection
     """
     conn = None
     try:
@@ -50,9 +58,17 @@ def worker_insert(
         if has_geometry:
             # For spatial data: assume geometry is the last column
             if geom_type == "wkt":
-                geom_function = f"ST_SetSRID(ST_GeomFromText(%s), {srid})"
+                if t_srid is not None and srid is not None:
+                    # Reproject geometry using ST_Transform
+                    geom_function = f"ST_Transform(ST_SetSRID(ST_GeomFromText(%s), {srid}), {t_srid})"
+                else:
+                    geom_function = f"ST_SetSRID(ST_GeomFromText(%s), {srid})"
             elif geom_type == "geojson":
-                geom_function = f"ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid})"
+                if t_srid is not None and srid is not None:
+                    # Reproject geometry using ST_Transform
+                    geom_function = f"ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid}), {t_srid})"
+                else:
+                    geom_function = f"ST_SetSRID(ST_GeomFromGeoJSON(%s), {srid})"
             else:
                 raise ValueError(f"Unsupported geometry type: {geom_type}")
 
@@ -120,6 +136,7 @@ def import_layer(
     has_geometry: bool = True,
     num_threads: int = 4,
     geom_type: Literal["wkt", "geojson"] = "wkt",
+    t_srid: Optional[int] = None,
 ) -> None:
     """
     Inserts data into a PostgreSQL/PostGIS table using multiple threads.
@@ -174,6 +191,7 @@ def import_layer(
                     property_keys,
                     has_geometry,
                     geom_type,
+                    t_srid,
                 )
                 for chunk in chunks
             ]
@@ -235,4 +253,174 @@ def import_geospatial_layer(
         has_geometry=True,
         num_threads=num_threads,
         geom_type=geom_type,
+    )
+
+
+def create_table_from_layer(
+    db_credentials: Dict[str, Any],
+    layer,
+    table_name: str,
+    srid: Optional[int] = None,
+) -> None:
+    """
+    Creates a PostGIS table based on the schema of an OGR layer.
+
+    Args:
+        db_credentials: Database connection details.
+        layer: OGR layer object.
+        table_name: Name of the target table.
+        srid: Spatial Reference System Identifier for the geometry column.
+    """
+    conn = None
+    try:
+        conn = psycopg2.connect(**db_credentials)
+        cursor = conn.cursor()
+
+        # Get layer definition
+        layer_defn = layer.GetLayerDefn()
+
+        # Build column definitions
+        column_defs = []
+        for i in range(layer_defn.GetFieldCount()):
+            field_defn = layer_defn.GetFieldDefn(i)
+            field_name = field_defn.GetName()
+            field_type = field_defn.GetType()
+
+            # Map OGR field types to PostgreSQL types
+            if field_type == ogr.OFTInteger:
+                pg_type = "INTEGER"
+            elif field_type == ogr.OFTInteger64:
+                pg_type = "BIGINT"
+            elif field_type == ogr.OFTReal:
+                pg_type = "DOUBLE PRECISION"
+            elif field_type == ogr.OFTString:
+                pg_type = "TEXT"
+            elif field_type == ogr.OFTDate:
+                pg_type = "DATE"
+            elif field_type == ogr.OFTDateTime:
+                pg_type = "TIMESTAMP"
+            else:
+                pg_type = "TEXT"  # Default fallback
+
+            column_defs.append(f"{field_name} {pg_type}")
+
+        # Add geometry column
+        geom_type_str = "GEOMETRY"  # Generic geometry type
+
+        if srid:
+            column_defs.append(f"geom geometry({geom_type_str}, {srid})")
+        else:
+            column_defs.append(f"geom geometry({geom_type_str})")
+
+        # Create table
+        create_sql = f'CREATE TABLE IF NOT EXISTS {table_name} (ID BIGSERIAL PRIMARY KEY, {", ".join(column_defs)})'
+        cursor.execute(create_sql)
+        conn.commit()
+        logger.info(f"Created table '{table_name}' with {len(column_defs)} columns")
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error creating table '{table_name}': {e}")
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error creating table '{table_name}': {e}")
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if conn:
+            conn.close()
+
+
+def import_from_file(
+    db_credentials: Dict[str, Any],
+    file_path: str,
+    table_name: str,
+    srid: Optional[int] = None,
+    t_srid: Optional[int] = None,
+    num_threads: int = 4,
+) -> None:
+    """
+    Imports data from a vector file (e.g., SHP or GeoJSON) into a PostGIS table.
+
+    Args:
+        db_credentials: Database connection details.
+        file_path: Path to the vector file.
+        table_name: Name of the target table.
+        srid: Optional Spatial Reference System Identifier. If provided, this SRID will be used
+              instead of auto-detecting from the file. If None, SRID will be auto-detected.
+        t_srid: Optional target Spatial Reference System Identifier. If provided, geometry will be
+                reprojected to this SRID. If None, geometry will use the source SRID.
+        num_threads: Number of threads to use for the insertion.
+    """
+    if "osgeo.ogr" not in sys.modules:
+        logger.error("The 'osgeo.ogr' library is required but not available.")
+        raise ImportError(
+            "The 'osgeo.ogr' library is required to create tables from layers."
+        )
+
+    data_source = ogr.Open(file_path, 0)
+    if data_source is None:
+        logger.error(f"Could not open file: {file_path}")
+        raise IOError(f"Could not open file: {file_path}")
+
+    layer = data_source.GetLayer()
+    if layer is None:
+        logger.error(f"No layer found in file: {file_path}")
+        raise ValueError(f"No layer found in file: {file_path}")
+
+    # Get SRID - use provided value, or auto-detect from file if not provided
+    if srid is None:  # Only auto-detect if user didn't provide a custom SRID
+        srs = layer.GetSpatialRef()
+        if srs:
+            srs.AutoIdentifyEPSG()
+            detected_srid = srs.GetAuthorityCode(None)
+            if detected_srid is not None:
+                srid = detected_srid
+                logger.info(f"Auto-detected SRID from file: {srid}")
+            else:
+                logger.warning(f"Could not auto-detect SRID for {file_path}. Using None.")
+        else:
+            logger.warning(f"No spatial reference found in {file_path}. Using None.")
+    else:
+        logger.info(f"Using user-provided SRID: {srid}")
+
+    # Determine which SRID to use for table creation (target SRID if provided, else source SRID)
+    table_srid = t_srid if t_srid is not None else srid
+    
+    # Create table before inserting data
+    create_table_from_layer(db_credentials, layer, table_name, table_srid)
+
+    # Get columns and property keys
+    layer_defn = layer.GetLayerDefn()
+    columns = [
+        layer_defn.GetFieldDefn(i).GetName() for i in range(layer_defn.GetFieldCount())
+    ]
+    property_keys = list(columns)
+    columns.append("geom")
+
+    # Prepare data for insertion
+    logger.info(f"Preparing data from layer with {layer.GetFeatureCount()} features")
+    data_to_insert = []
+    for feature in layer:
+        properties = [feature.GetField(key) for key in property_keys]
+        geom = feature.GetGeometryRef()
+        if geom:
+            properties.append(geom.ExportToWkt())
+        data_to_insert.append(properties)
+
+    # Import into PostGIS
+    logger.info(f"Importing features into '{table_name}'")
+    import_layer(
+        db_credentials=db_credentials,
+        data=data_to_insert,
+        table_name=table_name,
+        columns=columns,
+        property_keys=property_keys,
+        srid=srid,
+        has_geometry=True,
+        num_threads=num_threads,
+        geom_type="wkt",
+        t_srid=t_srid,
     )

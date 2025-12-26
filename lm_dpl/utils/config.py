@@ -28,6 +28,10 @@ class Settings(BaseSettings):
         None, description="Log file path (optional, auto-generated if not set)"
     )
 
+    DEM_PATH: str = Field(..., description="Path to DEM data files")
+
+    GEE_PROJECT: str = Field(..., description="Google Earth Engine project ID")
+
     # PostgreSQL database configuration
     POSTGRES_HOST: str = Field(..., description="PostgreSQL host address")
     POSTGRES_PORT: int = Field(..., description="PostgreSQL port number")

@@ -8,6 +8,7 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_fpd_post.sql
    - zoning: 
       description: Zoning
       epsg: 3857
@@ -17,15 +18,16 @@ oregon:
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_zoning_post.sql
    - plss1: 
-      description: Public Land Survey System (Intersected)
+      description: Public Land Survey System (First Division)
       epsg: 3857
-      outfields: PLSSID,TWNSHPLAB,FRSTDIVNO
-      dtypes: VARCHAR(16),VARCHAR(20),VARCHAR(10)
-      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/7/query?
+      outfields: PLSSID,FRSTDIVNO,FRSTDIVTXT
+      dtypes: VARCHAR(16),VARCHAR(10),VARCHAR(50)
+      url: https://gis.blm.gov/orarcgis/rest/services/Land_Status/BLM_OR_PLSS/MapServer/4/query?
       fetch: true
-      max_records: 5000
-      geom: false
+      max_records: 10000
+      geom: true
    - plss2: 
       description: Public Land Survey System (Township and Range)
       epsg: 3857
@@ -35,15 +37,17 @@ oregon:
       fetch: true
       max_records: 2500
       geom: true
+      post_script: lm_dpl/parcels/oregon_plss_post.sql
    - sfd: 
       description: Structural Fire Districts
-      epsg: 2992
+      epsg: 3857
       outfields: FDID_DCIN,Agency_Name
       dtypes: VARCHAR(255),VARCHAR(255)
       url: https://services.arcgis.com/uUvqNMGPm7axC2dD/ArcGIS/rest/services/Structural_Fire_Districts_Public/FeatureServer/68/query?
       fetch: true
       max_records: 2000
       geom: true
+      post_script: lm_dpl/parcels/oregon_sfd_post.sql
    - taxlots: 
       description: Oregon Taxlots
       url: https://utility.arcgis.com/usrsvcs/servers/78bbb0d0d9c64583ad5371729c496dcc/rest/services/Secure/DOR_ORMAP/MapServer/3/query?
@@ -52,25 +56,121 @@ oregon:
       geom: true
    - coa:
       description: ODF Conservation Opportunity Areas
-      epsg: 2992
-      outfields: COAID,COAName
-      dtypes: VARCHAR(5),VARCHAR(100)
+      epsg: 3857
+      outfields: COAID,COAName,CentroidEc,ProfileLin
+      dtypes: VARCHAR(5),VARCHAR(100),VARCHAR(5),VARCHAR(254)
       url: https://nrimp.dfw.state.or.us/arcgis/rest/services/Compass/ODFW_ConservationOpportunityAreas/MapServer/0/query?
       fetch: true
+      max_records: 2000
+      geom: true
+   - huc:
+      description: 12-digit Hydrologic Unit (HU12) polygon boundaries for the United States, Puerto Rico, and the U.S. Virgin Islands.
+      url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
+      epsg: 3857
+      outfields: huc12,name,states
+      dtypes: VARCHAR(12),VARCHAR(255),VARCHAR(50)
+      where: "STATES LIKE '%OR%'"
+      fetch: true
+      max_records: 100
+      max_processes: 1
+      geom: true
+   - ppa:
+      description: USA Census Populated Place Areas
+      url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
+      epsg: 3857
+      outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(10),INTEGER,INTEGER,FLOAT,FLOAT
+      where: "ST = 'OR'"
+      fetch: true
+      max_records: 2000
+      geom: true
+   - cty:
+      description: Washington State Counties
+      url: https://carto.nationalmap.gov/arcgis/rest/services/govunits/mapserver/23/query?
+      epsg: 3857
+      outfields: STATE_FIPSCODE,COUNTY_FIPSCODE,COUNTY_NAME
+      dtypes: VARCHAR(2),VARCHAR(3),VARCHAR(120)
+      where: "STATE_FIPSCODE = '41'"
+      fetch: false
       max_records: 2000
       geom: true
 washington:
    - taxlots:
       description: All state parcels past year
-      epsg: 2927
-      outfields: FIPS_NR,LANDUSE_CD,COUNTY_NM,FILE_DATE
-      dtypes: VARCHAR(3),SMALLINT,VARCHAR(12),DATE
       url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
+      epsg: 3857
+      outfields: OBJECTID,FIPS_NR,ORIG_PARCEL_ID,LANDUSE_CD,COUNTY_NM,FILE_DATE
+      dtypes: BIGINT,INTEGER,VARCHAR(20),SMALLINT,VARCHAR(12),BIGINT
+      where: "ABS(Shape__Area) < 1000000000"
       fetch: true
       max_records: 2000 
       geom: true
+      post_script: lm_dpl/parcels/washington_taxlot_post.sql
    - zoning:
       description: Zoning
       url: https://services6.arcgis.com/tboeqGwETr5ppr5Q/ArcGIS/rest/services/WAZA_Prototype_Layers/FeatureServer/0/query?
       epsg: 3857
       outfields: ZoneID,ZoneName
+      dtypes: VARCHAR(255),VARCHAR(255)
+      fetch: false
+      max_records: 2000
+      geom: true
+   - landuse:
+      description: Washington Land Use Designations
+      url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/LandUse2010gdb/FeatureServer/0/query
+      epsg: 3857
+      outfields: LANDUSE_CD,DESCR
+      dtypes: INTEGER,VARCHAR(72)
+      fetch: true
+      max_records: 2000
+      geom: true
+   - plss:
+      description: Public Land Survey System (PLS Township Subdivision)
+      url: https://gis.dnr.wa.gov/site3/rest/services/Public_Boundaries/WADNR_PUBLIC_Cadastre_OpenData/MapServer/2/query?
+      epsg: 3857
+      outfields: LEGAL_DESC_TYPE_CD,LEGAL_DESC_NM,EDIT_DATE
+      dtypes: INTEGER,VARCHAR(50),BIGINT
+      fetch: true
+      max_records: 2000
+      geom: true
+      post_script: lm_dpl/parcels/washington_plss_post.sql
+   - fpd:
+      description: Fire Protection Districts
+      url: https://gis.dnr.wa.gov/site3/rest/services/Public_Wildfire/WADNR_PUBLIC_WD_WildFire_Data/MapServer/6/query?
+      epsg: 3857
+      outfields: FPD_CODE,FPD_DESC
+      dtypes: VARCHAR(254),VARCHAR(254)
+      fetch: true
+      max_records: 10
+      geom: true
+   - huc:
+      description: 12-digit Hydrologic Unit (HU12) polygon boundaries
+      url: https://hydro.nationalmap.gov/arcgis/rest/services/wbd/MapServer/6/query?
+      epsg: 3857
+      outfields: huc12,name,states
+      dtypes: VARCHAR(12),VARCHAR(255),VARCHAR(50)
+      where: "STATES LIKE '%WA%'"
+      fetch: true
+      max_records: 100 
+      max_processes: 1
+      geom: true
+   - ppa:
+      description: USA Census Populated Place Areas
+      url: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Census_Populated_Places/FeatureServer/0/query?
+      epsg: 3857
+      outfields: FID,CLASS,ST,STFIPS,PLACEFIPS,POPULATION,POP_CLASS,POP_SQMI,SQMI
+      dtypes: INTEGER,VARCHAR(30),VARCHAR(2),VARCHAR(10),VARCHAR(10),INTEGER,INTEGER,FLOAT,FLOAT
+      where: "ST = 'WA'"
+      fetch: true
+      max_records: 2000
+      geom: true
+   - cty:
+      description: Washington State Counties
+      url: https://carto.nationalmap.gov/arcgis/rest/services/govunits/mapserver/23/query?
+      epsg: 3857
+      outfields: STATE_FIPSCODE,COUNTY_FIPSCODE,COUNTY_NAME
+      dtypes: VARCHAR(2),VARCHAR(3),VARCHAR(120)
+      where: "STATE_FIPSCODE = '53'"
+      fetch: true
+      max_records: 2000
+      geom: true

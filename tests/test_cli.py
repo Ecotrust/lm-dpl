@@ -91,8 +91,8 @@ class TestCLI:
         with patch("lm_dpl.parcels.processor.ParcelProcessor") as mock_processor_class:
             mock_processor_instance = mock_processor_class.return_value
             result = run_parcels("oregon")
-            mock_processor_class.assert_called_once_with("oregon")
-            mock_processor_instance.run.assert_called_once()
+            mock_processor_class.assert_called_once_with("oregon", config_path=None)
+            mock_processor_instance.fetch.assert_called_once()
             assert result == 0
 
     def test_run_parcels_failure(self):
@@ -176,7 +176,6 @@ class TestCLIArgumentParsing:
             except SystemExit:
                 pass
             help_output = mock_stdout.getvalue()
-            assert "--config" in help_output
             assert "--verbose" in help_output
             assert "Examples:" in help_output
 

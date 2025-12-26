@@ -1,0 +1,226 @@
+oregon:
+- taxlots_benton:
+    description: Benton County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: MapTaxlot
+    dtypes: VARCHAR(25)
+    url: https://gis.co.benton.or.us/arcgis/rest/services/Public/TaxlotOwners/FeatureServer/0/query
+- taxlots_columbia:
+    description: Columbia County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: OBJECTID,MAP_TAX,PROPERTY_C
+    dtypes: INTEGER,VARCHAR(13),VARCHAR(6)
+    url: https://gis.columbiacountymaps.com/server/rest/services/BaseData/Tax_Map/MapServer/0/query
+- taxlots_clatsop:
+    description: Clatsop County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 5000
+    outfields: TAXMAPKEY
+    dtypes: VARCHAR(12)
+    url: https://delta.co.clatsop.or.us/server/rest/services/Taxlots/FeatureServer/1/query
+- taxlots_douglas:
+    description: Douglas County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 4000
+    outfields: MapTaxlot
+    dtypes: VARCHAR(35)
+    url: https://gis.co.douglas.or.us/server/rest/services/Parcel/ORMAP_Parcels/MapServer/2/query
+- taxlots_coos:
+    description: Coos County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: TLID
+    dtypes: VARCHAR(20)
+    url: https://services.arcgis.com/or6I5QjRIBzpPc8G/arcgis/rest/services/GIS_Online_September_2025/FeatureServer/4/query
+- taxlots_curry:
+    description: Curry County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: CurryTaxlots_MapTaxlot
+    dtypes: VARCHAR(25)
+    url: https://gateway.maps.rlid.org/maps1/rest/services/Curry/GeneralMap/MapServer/20/query
+- taxlots_harney:
+    description: Harney County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MapTaxlot
+    dtypes: VARCHAR(25)
+    url: https://services3.arcgis.com/e3KSI9Py4B7m3xu6/ArcGIS/rest/services/02_arcgis_online_Address_and_Tax_Lots_1/FeatureServer/1/query
+- taxlots_hoodriver:
+    description: Hoodriver County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MAPTAXLOT
+    dtypes: VARCHAR(50)
+    url: https://services7.arcgis.com/xtfQPw7zwSRPkcfN/ArcGIS/rest/services/Tax_Lot_Parcels_Public/FeatureServer/54/query
+- taxlots_josephine:
+    description: Josephine County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: MapNum
+    dtypes: VARCHAR(14)
+    url: https://gis.co.josephine.or.us/arcgis/rest/services/Planning/JOCO_PLN_TAXLOTS/MapServer/1/query
+- taxlots_klamath:
+    description: Klamath County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: MAPTAXLOT_,MapTaxLot1 
+    dtypes: VARCHAR(22),VARCHAR(22)
+    url: https://services.arcgis.com/H6Mh1bySxR4oHx6x/ArcGIS/rest/services/KC_Taxlots/FeatureServer/1/query
+- taxlots_lake:
+    description: Lake County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: MapTaxlot
+    dtypes: VARCHAR(25)
+    url: https://services3.arcgis.com/e3KSI9Py4B7m3xu6/ArcGIS/rest/services/Lake01_TL_Addresspoints/FeatureServer/1/query
+- taxlots_lane:
+    description: Lane County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MAPTAXLOT
+    dtypes: VARCHAR(24)
+    url: https://lcmaps.lanecounty.org/arcgis/rest/services/LaneCountyMaps/AddressParcel/MapServer/2/query
+- taxlots_washington_test:
+    description: Washington County Taxlots
+    epsg: 2269
+    fetch: true
+    geom: true
+    max_records: 1000
+    outfields: TLNO
+    dtypes: VARCHAR(12)
+    url: https://gispub.co.washington.or.us/server/rest/services/baselayers/Taxlots_SP2/MapServer/1/query
+- taxlots_morrow:
+    description: Morrow County Taxlots
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MapNumber,Taxlot,MapTaxLot
+    dtypes: VARCHAR(20),VARCHAR(5),VARCHAR(25)
+    url: https://services6.arcgis.com/MQGnkVpUbcAxMorv/ArcGIS/rest/services/Taxlots_wo_Ownership/FeatureServer/0/query
+- taxlots_tillamook:
+    description: Tax lot parcels in Tillamook County, Oregon.
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: Taxlot,MapTaxlot,Shape__Area
+    dtypes: VARCHAR(5),VARCHAR(25),FLOAT
+    url: https://services3.arcgis.com/JnnlTIrcZLzs7d68/ArcGIS/rest/services/Taxlots/FeatureServer/0/query
+- taxlots_marion:
+    description: Tax lot parcels in Marion County, Oregon.
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: TAXLOT,TAXCODE,Shape__Area
+    dtypes: VARCHAR(30),VARCHAR(100),FLOAT
+    url: https://services1.arcgis.com/sYGZnQPdJ0azuLyn/arcgis/rest/services/Parcels_OpenDataView/FeatureServer/0/query
+- taxlots_deschutes:
+    description: Tax lot parcels in Deschutes County, Oregon.
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: TAXLOT,Shape__Area
+    dtypes: VARCHAR(13),FLOAT
+    url: https://services1.arcgis.com/znO8Hz1SuVVohYhZ/arcgis/rest/services/Taxlots/FeatureServer/0/query
+- taxlots_umatilla:
+    description: Umatilla County GIS File depicting land partition and ownership within Umatilla County
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: map_tax,MAP,Shape__Area
+    dtypes: VARCHAR(254),VARCHAR(254),FLOAT
+    url: https://services3.arcgis.com/tNPgIZWOB0Efvm0g/ArcGIS/rest/services/Tax_Lots/FeatureServer/0/query
+- taxlots_wheeler:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 1000
+    outfields: MAPTAXLOT,Shape__Area
+    dtypes: VARCHAR(25),FLOAT
+    url: https://services3.arcgis.com/e3KSI9Py4B7m3xu6/ArcGIS/rest/services/Wheeler01_TL/FeatureServer/0/query
+- taxlots_jackson:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MAPNUMBER,MAPNUM,TM_MAPLOT,TAXLOT,Shape__Area
+    dtypes: VARCHAR(20),VARCHAR(20),VARCHAR(18),INTEGER,FLOAT
+    url: https://services1.arcgis.com/DwYBkWQPdaJNWrPG/arcgis/rest/services/TaxLots_Download/FeatureServer/0/query
+- taxlots_yamhill:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: maptaxlot,Shape__Area
+    dtypes: VARCHAR(255),FLOAT
+    url: https://services6.arcgis.com/toubSXwoan3LMhOW/arcgis/rest/services/Taxlots_and_Taxing_Districts/FeatureServer/1/query
+- taxlots_wallowa:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MapTaxlot,Shape__Area
+    dtypes: VARCHAR(25),FLOAT
+    url: https://services1.arcgis.com/CD5mKowwN6nIaqd8/arcgis/rest/services/Wallowa_County_Tax_Lot_Property_Boundaries/FeatureServer/0/query
+- taxlots_wasco:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 200
+    outfields: MapTaxlot,CalculatedAcres
+    dtypes: VARCHAR(25),FLOAT
+    url: https://public.co.wasco.or.us/gisserver/rest/services/Taxlots/MapServer/0/query
+- taxlots_union:
+    description: 'ArcGIS service: query'
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MapTaxLot,Shape__Area
+    dtypes: VARCHAR(254),FLOAT
+    url: https://services8.arcgis.com/2u6YTNFrXNL3rusb/arcgis/rest/services/UC_Accounts/FeatureServer/0/query
+- taxlots_multnomah:
+    description: Taxlots for Multnomah County, OR
+    epsg: 3857
+    fetch: false
+    geom: true
+    max_records: 2000
+    outfields: MAPTAXLOT,PROPID,MAPID,LOC_CODE,ZONING,TownshipRange,Shape__Area
+    dtypes: VARCHAR(25),VARCHAR(20),VARCHAR(20),VARCHAR(20),VARCHAR(30),VARCHAR(20),FLOAT
+    url: https://services5.arcgis.com/x7DNZL1YqNQVNykA/arcgis/rest/services/Multnomah_County_Taxlot_Parcels/FeatureServer/0/query
