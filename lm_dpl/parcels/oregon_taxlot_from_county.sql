@@ -13,16 +13,19 @@ BEGIN;
 -- County code in s_oregon_taxlots_old does not map to fips codes
 -- thus we need to map county code to county fips.
 CREATE TABLE IF NOT EXISTS s_oregon_county_fips_mapping AS
-SELECT t.county, c.county_fipscode, c.county_name 
-FROm s_oregon_taxlots_old t
+SELECT DISTINCT t.county, c.county_fipscode, c.county_name 
+FROM s_oregon_taxlots_old t
 JOIN (
-	SELECT DISTINCT ON (county) id
-	FROM s_oregon_taxlots_old 
-	WHERE county > 0
-	GROUP BY county, id
+    -- Select one ID per county. 
+    -- Avoid selecting 'geom' here to keep the sort operation lightweight.
+    SELECT DISTINCT ON (county) id
+    FROM s_oregon_taxlots_old 
+    -- WHERE county > 0 -- Uncomment if filtering 0 is desired
+    ORDER BY county, id
 ) f ON t.id = f.id
-JOIN s_oregon_cty c ON ST_Intersects(t.geom, c.geom)
+JOIN s_oregon_cty c ON ST_Intersects(ST_Centroid(t.geom), c.geom)
 ORDER BY c.county_fipscode;
+
 
 DROP TABLE IF EXISTS s_oregon_taxlots;
 CREATE TABLE  s_oregon_taxlots AS
@@ -124,4 +127,17 @@ LEFT JOIN s_oregon_county_fips_mapping m
 -- ) AS all_taxlots
 -- WHERE NULLIF(maptaxlot, ' ') IS NOT NULL
 --     AND maptaxlot !~* '(ROAD|WATER|RAIL|NONTL|CANAL|RIVER|GAP|RR|WTR|STR|ISLAND|R\/R)';
+
+ALTER TABLE s_oregon_taxlots 
+ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+
+ALTER TABLE s_oregon_taxlots
+ADD COLUMN county_fips VARCHAR(3);
+
+UPDATE s_oregon_taxlots t
+SET county_fips = m.county_fipscode
+FROM s_oregon_county_fips_mapping m
+WHERE t.county = m.county_name;
+
 COMMIT;
+
