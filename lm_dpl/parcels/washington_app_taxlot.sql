@@ -63,13 +63,12 @@ JOIN (
 	SELECT *
 	FROM s_washington_elevation
 	EXCEPT
+    -- Exclude small taxlots and taxlots with low forest cover within PPAs
 	SELECT e.*
 	FROM s_washington_elevation e
 	JOIN s_washington_taxlots_post t 
-	-- match both maptaxlot and geohash11 
 		ON t.maptaxlot = e.maptaxlot
 	JOIN s_washington_ppa p
-	-- exclude taxlots that intersect PPA areas 
 		ON ST_Intersects(t.geom, p.geom)
 	WHERE t.area_sqm < 2024
 		OR (e.forest_pix/CAST(e.total_pix AS FLOAT) < 0.20) 
@@ -197,6 +196,8 @@ to_delete AS (
 )
 DELETE FROM washington_app_taxlot
 WHERE map_taxlot IN (SELECT DISTINCT map_taxlot FROM to_delete);
+
+DROP TABLE IF EXISTS washington_taxlots_temp;
 
 COMMIT;
 
