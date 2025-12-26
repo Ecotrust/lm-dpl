@@ -1,3 +1,30 @@
+/* 
+ This script performs the following steps:
+
+ Cleaning and filtering
+
+ - Removes records with NULL or empty maptaxlot values
+ - Filters out taxlots with codes with invalid numeric patterns except ALLOTTED, ONF, 
+   TRIBAL, DNR, BML, STATE, WNF, ONP, IS, RES.
+ - Filters out taxlots based on landuse_cd and shape metrics indicating non-parcel features.
+   Removes taxlots with extreme skinny shapes (4*area/perimeter^2 < 0.02) or very large area (>10,000,000 sqm)
+ - Uses `ST_MakeValid()` to fix invalid geometries
+ - Extracts only polygon geometries (`ST_CollectionExtract(..., 3)`)
+ - Converts to MultiPolygon format for consistency
+
+ Deduplication
+
+- Identifies parcels with the same county and maptaxlot code that appear as multiple geometries
+- Uses `ST_Union()` to merge these fragmented geometries into single MultiPolygons
+- Addresses cases where the same maptaxlot code appears in multiple counties. Uses spatial 
+  clustering (`ST_ClusterDBSCAN`) to group nearby geometries (within 500 meters).
+
+ Final insert
+
+- Calculates standardized area measurements in square meters using EPSG:5070 projection
+- Generates geohash11 values for spatial indexing using EPSG:4326
+- For remaining duplicates, appends a geohash suffix to the maptaxlot code.
+*/
 BEGIN;
 DROP TABLE IF EXISTS s_washington_taxlots_post;
 CREATE TABLE s_washington_taxlots_post (
@@ -44,7 +71,7 @@ excluded_ids AS (
 )
 SELECT 
     t.county_nm as county, 
-    COALESCE(NULLIF(TRIM(orig_parcel_id), ''), LPAD(CAST(t.fips_nr AS VARCHAR), '000') || '-' || ST_GeoHash(ST_Transform(t.geom, 4326), 11)) as maptaxlot, 
+    COALESCE(NULLIF(TRIM(orig_parcel_id), ''), LPAD(CAST(t.fips_nr AS VARCHAR), '000') || '_' || ST_GeoHash(ST_Transform(t.geom, 4326), 11)) as maptaxlot, 
     t.landuse_cd,
     ST_Area(ST_Transform(geom, 5070)) AS area_sqm, 
     ST_Perimeter(ST_Transform(geom, 5070)) AS perimeter,
@@ -155,6 +182,33 @@ SELECT
 FROM duplicated_taxlots
 GROUP BY county, landuse_cd, maptaxlot, cid;
 
+-- Now merge by maptaxlot and cluster id to catch taxlots 
+-- that span counties
+DROP TABLE IF EXISTS merged_clusters_round2;
+CREATE TABLE merged_clusters_round2 AS
+SELECT 
+    b.county, 
+    a.maptaxlot, 
+    ST_Area(ST_Transform(a.geom, 5070)) AS area_sqm, 
+    ST_GeoHash(ST_Transform(a.geom, 4326), 11) AS geohash11, 
+    a.geom 
+FROM (
+    SELECT 
+        maptaxlot, 
+        cid, 
+        ST_Union(geom) AS geom 
+    FROM merged_clusters
+    GROUP BY maptaxlot, cid
+) a
+JOIN (
+    SELECT DISTINCT ON (maptaxlot, cid) 
+        county, 
+        maptaxlot, 
+        cid
+    FROM merged_clusters 
+    ORDER BY maptaxlot, cid, area_sqm DESC
+) b ON a.maptaxlot = b.maptaxlot AND a.cid = b.cid;
+
 
 -- Insert deduplicated taxlots into final table (~6k records as of 2025-12)
 INSERT INTO s_washington_taxlots_post (county, maptaxlot, landuse_cd, area_sqm, geohash11, geom)
@@ -168,7 +222,7 @@ SELECT * FROM (
 
     SELECT 
         county, 
-        -- Rename remaining duplicates by appending geohash suffix (~111 records as of 2025-12)
+        -- Rename remaining duplicates by appending geohash suffix.
         CASE 
             WHEN COUNT(*) OVER (PARTITION BY maptaxlot) > 1 
             THEN maptaxlot || '_' || UPPER(ST_GeoHash(ST_Transform(ST_Centroid(geom), 4326), 6))
@@ -179,7 +233,7 @@ SELECT * FROM (
         geohash11, 
         geom
     FROM merged_clusters_round2
-    WHERE maptaxlot NOT IN (SELECT maptaxlot FROM merged_taxlots_dups_counties)
+    -- WHERE maptaxlot NOT IN (SELECT maptaxlot FROM merged_taxlots_dups_counties)
 
 ) AS final_set
 ON CONFLICT (maptaxlot) DO NOTHING;
