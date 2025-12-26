@@ -86,7 +86,7 @@ class SumParcel(ZonalStatsBase):
         # forest_pix = np.count_nonzero(zones[~np.isnan(zones)]).item()
         unique_values, counts = np.unique(zones[~np.isnan(zones)], return_counts=True)
         hist = dict(zip(unique_values.astype(int), counts.astype(int)))
-        forest_pix = hist.get(1, 0)  # Assuming '1' represents
+        forest_pix = hist.get(1, 0)  # Assuming '1' represents forest class
         total_pix = sum(counts)
 
         return (
@@ -143,7 +143,7 @@ def main(state: str) -> None:
         q_create_table = f"""
             CREATE TABLE IF NOT EXISTS public.s_{state}_elevation
             (
-                maptaxlot VARCHAR(25) PRIMARY KEY,
+                maptaxlot VARCHAR(64) PRIMARY KEY,
                 geohash11 VARCHAR(11),
                 min_elev INTEGER,
                 max_elev INTEGER,
@@ -160,17 +160,13 @@ def main(state: str) -> None:
             SELECT maptaxlot, geohash11, geom as geometry, area_sqm
             FROM s_{state}_taxlots_post
             WHERE area_sqm > {MIN_AREA_THRESHOLD}
-                -- AND objectid NOT IN (1618482, 1618481)
-                -- AND county_nm = 'Lincoln'
 
             EXCEPT 
-            
             SELECT t.maptaxlot, t.geohash11, t.geom as geometry, t.area_sqm
             FROM s_{state}_taxlots_post t
             JOIN s_{state}_elevation e 
                 ON t.maptaxlot = e.maptaxlot 
                 AND t.geohash11 = e.geohash11
-            -- LIMIT 1000;
         """
 
         with engine.begin() as conn:
@@ -255,6 +251,7 @@ def main(state: str) -> None:
                         (maptaxlot, geohash11, min_elev, max_elev, forest_pix, total_pix, area_sqm)
                         VALUES (:maptaxlot, :geohash11, :min_elev, :max_elev, :forest_pix, :total_pix, :area_sqm)
                         ON CONFLICT (maptaxlot) DO UPDATE SET
+                            geohash11 = EXCLUDED.geohash11,
                             min_elev = EXCLUDED.min_elev,
                             max_elev = EXCLUDED.max_elev,
                             forest_pix = EXCLUDED.forest_pix,
