@@ -97,10 +97,11 @@ oregon:
 washington:
    - taxlots:
       description: All state parcels past year
+      url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
       epsg: 3857
       outfields: OBJECTID,FIPS_NR,ORIG_PARCEL_ID,LANDUSE_CD,COUNTY_NM,FILE_DATE
       dtypes: BIGINT,INTEGER,VARCHAR(20),SMALLINT,VARCHAR(12),BIGINT
-      url: https://services.arcgis.com/jsIt88o09Q0r1j8h/ArcGIS/rest/services/Previous_Parcels/FeatureServer/0/query?
+      where: "ABS(Shape__Area) < 1000000000"
       fetch: true
       max_records: 2000 
       geom: true
