@@ -83,7 +83,9 @@ graph TD
 - **`app_populationpoint`**: Population distribution and demographic data
 - **`app_coa`**: Conservation opportunity areas and planning data
 
-The pipeline supports both Oregon and Washington states with state-specific processing logic while maintaining consistent output schemas.
+The pipeline supports both Oregon and Washington states with state-specific processing logic while maintaining consistent output schemas. 
+
+See [Pipeline Execution](docs/pipeline_execution.md) for detailed instructions on running the pipeline for each state.
 
 ## Installation
 
@@ -169,22 +171,17 @@ Fetch data from remote sources for the specified state.
 
 ```bash
 # Fetch all layers for a state (Oregon or Washington)
-lm-dpl fetch washington
+lm-dpl fetch <state>
 
-# Fetch specific layers for a state
-lm-dpl fetch --layer fpd washington
-lm-dpl fetch --layer soil WA
+# Fetch specific layers 
+lm-dpl fetch --layer <layer_name> <state>
 
 # Fetch multiple layers for a state
-lm-dpl fetch --layer fpd --layer plss1 OR
+lm-dpl fetch --layer <layer_name1> --layer <layer_name2> <state>
 
 # Fetch with overwrite flag (WARNING: Deletes existing data)
-lm-dpl fetch --overwrite --layer taxlots OR
-
-NOTE: soil and elevation layers do not have overwrite option. Use with caution.
-
-# Fetch with verbose logging
-lm-dpl --verbose fetch --layer fpd OR
+# NOTE: soil and elevation layers do not have overwrite option.
+lm-dpl fetch --overwrite --layer <layer_name> <state>
 ```
 
 Available layers for fetching:
@@ -205,7 +202,7 @@ Fetch with custom configuration file.
 You can provide a custom configuration file to override default endpoint settings:
 
 ```bash
-lm-dpl fetch --config custom_endpoints.yml OR
+lm-dpl fetch --config custom_endpoints.yml <state>
 ```
 
 The configuration file should look like this:
@@ -222,24 +219,15 @@ state:
       url: "https://api.example.com/arcgis/rest/services/..."
       fetch: true # Fetch data from this endpoint, if false, endoint will be skipped
       max_records: 1000  # rate limit for the endpoint
-      geom: true # for spatial data
-      post_script: "path/to/script.sql"  # Optional
+      geom: true # to fetch as a spatial layer
+      post_script: "path/to/script.sql"  # Optional script to run after fetching
 ```
 
 Fetch data from a shapefile.
 
 ```bash
-# Import a file into a table
-lm-dpl import-file data.shp mytable
-
-# Import with source SRID override
-lm-dpl import-file data.shp mytable --srid 4326
-
-# Import with target SRID for reprojection
-lm-dpl import-file data.shp mytable --t-srid 3857
-
-# Import with both source and target SRIDs
-lm-dpl import-file data.shp mytable --srid 4326 --t-srid 3857
+# Import data from a shapefile into a staging table
+lm-dpl import-file <shapefile> <target table name> --srid <epsg code> --t-srid <epsg code>
 ```
 
 ### Process Command
@@ -248,37 +236,6 @@ Process fetched data to generate application tables.
 
 ```bash
 # Process taxlots table for a state
-lm-dpl process --table taxlots --state <state>
-
-# Process coa table for a state
-lm-dpl process --table coa --state <state>
-
-# Process soil table for a state
-lm-dpl process --table soil --state <state>
-
-# Process populationpoint table for a state
-lm-dpl process --table populationpoint --state <state>
+lm-dpl process --table <table> --state <state>
 ```
 
-## Schema changes
-
-### Soil Data
-
-Changes in table schemas must be reflected in the following files:
-- `lm_dpl/soil/processor.py`: 
-    - Update SQL queries to include new/existing columns
-    - Update data insertion logic to match new schema
-- `lm_dpl/soil/oregon_soils_schema.sql`
-    - Update `CREATE TABLE` statements to reflect new/existing columns
-    - Ensure data types and constraints are correctly defined
-
-### Updating Taxlot Data
-
-Changes in table schemas must be reflected in the following files:
-- `lm_dpl/clients/endpoints.py`:
-    - Add new data source endpoints if applicable
-    - Change source column names (outfields) and data types (dtypes)
-    - Add `post_script` to handle postprocessing steps, e.g. renaming columns or adding new ones.
-- `lm_dpl/parcels/**.sql`
-    - Update scripts to reflect new/existing data layers and schema changes
-    - Ensure data types and constraints are correctly defined
