@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# Script to export app tables without id columns
+# Drops id columns before export and restores them after
+
+set -euo pipefail
+
+# Array of tables to export
+TABLES=(
+    "oregon_app_taxlot"
+    "oregon_app_soiltype"
+    "oregon_app_coa"
+    "oregon_app_populationpoint"
+    "washington_app_taxlot"
+    "washington_app_populationpoint"
+    "washington_app_soiltype"
+)
+
+# Docker container and database settings
+CONTAINER="dpl-db"
+DB_USER="gis"
+DB_NAME="gis"
+
+# Function to drop id column from a table
+drop_id_column() {
+    local table=$1
+    echo "Dropping id column from $table..."
+    docker exec -i "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
+        -c "ALTER TABLE public.$table DROP COLUMN IF EXISTS id;"
+}
+
+# Function to restore id column to a table
+restore_id_column() {
+    local table=$1
+    echo "Restoring id column to $table..."
+    docker exec -i "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
+        -c "ALTER TABLE public.$table ADD COLUMN id SERIAL PRIMARY KEY;"
+}
+
+# Function to export a table
+export_table() {
+    local table=$1
+    echo "Exporting $table..."
+    # Using Custom Format (-Fc) which includes compression and allows flexible restore
+    docker exec -i "$CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" \
+        -Fc -t "public.$table" > "${table}.dump"
+}
+
+# Main export process
+for table in "${TABLES[@]}"; do
+    echo "Processing $table..."
+    
+    # Drop id column before export
+    drop_id_column "$table"
+    
+    # Export the table
+    export_table "$table"
+    
+    # Restore id column after export
+    restore_id_column "$table"
+    
+    echo "Exported $table to ${table}.dump"
+    echo ""
+done
+
+echo "All tables exported successfully!"
