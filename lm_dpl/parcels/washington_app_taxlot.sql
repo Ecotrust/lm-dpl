@@ -152,7 +152,7 @@ SELECT
     NULL,
     COALESCE(lu.descr, 'Not Defined') AS orzdesc,
     huc.huc12,
-    NULL,
+    huc.name,
     t.min_elev,
     t.max_elev,
     plss.legal_desc,

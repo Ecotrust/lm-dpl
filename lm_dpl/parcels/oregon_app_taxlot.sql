@@ -175,7 +175,7 @@ SELECT
     sfd.agency,
     COALESCE(zn.orzdesc, 'Not Defined') AS orzdesc,
     huc.huc12,
-    NULL,
+    huc.name,
     t.min_elev,
     t.max_elev,
     plss.legal_desc,
