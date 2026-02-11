@@ -17,7 +17,7 @@ WITH coa_join AS (
         c.coaname,
         c.centroidec,
         c.profilelin,
-        ST_Intersection(c.geom, h.geom) as geometry
+        h.geom as geometry
     FROM s_oregon_coa c
     JOIN s_oregon_huc h ON ST_Intersects(c.geom, h.geom)
 )
